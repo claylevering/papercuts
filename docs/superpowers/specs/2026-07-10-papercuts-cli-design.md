@@ -129,6 +129,17 @@ Stable exit codes:
 - `5`: temporary SQLite lock contention; retryable
 - `6`: safety or redaction failure; nothing persisted
 
+Command data shapes are fixed in v1:
+
+- `add`: `{id, createdAt, source, repository: {name}|null, redactionCount}` where `createdAt` is RFC 3339 UTC; never the body, root, repository fingerprint, model, category, or tags
+- `list`: `{scope, records}` where `scope` is `{kind:"current", repository:{name}}` or `{kind:"all"}` and each record is `{id, createdAt, body, source, model, category, tags, repository:{name,branch,cwdRelative}|null, redactionCount}`; records omit absolute roots, commits, and fingerprints
+- `stats`: `{scope, total, firstAt, lastAt, byDay, bySource, byRepository, byCategory, redactedRecordCount, replacementCount, exactRepeats}`
+- `export`: `{scope, recordCount, outputPath|null, markdown}`; `markdown` is null when an output path is used
+- `setup`: `{harness, action, scope, state, mutations, snippet|null}` with mutation paths and managed lines only
+- `doctor`: `{ok, checks}` where every check is `{name, status:"ok"|"warn"|"error", message}` and messages contain no payload or configuration contents
+- `help`: `{topic, usage}` where topic is a command name or null
+- `version`: `{version}` using the CLI semantic version
+
 ## Record model
 
 Records are immutable. V1 does not edit, resolve, reopen, or delete them.
@@ -152,13 +163,15 @@ Absolute paths and local fingerprints may exist in the private database for attr
 
 Branches and worktrees are context, not repository identity.
 
-1. Resolve the real Git common directory. Its SHA-256 digest is the local identity and is shared by linked worktrees.
-2. Select the primary remote as `origin`, or the only remote when exactly one exists.
+1. Resolve the real Git common directory and read its filesystem device/inode identity. Hash `local:<device>:<inode>` for local identity; never hash the raw path. Linked worktrees share the common directory and therefore the local identity.
+2. Select `origin` when it exists. Otherwise select the only remote when exactly one exists. If multiple non-`origin` remotes exist, do not guess; use local identity.
 3. Parse HTTPS, SSH URL, and SCP-style remotes. Discard userinfo, credentials, query, and fragment before any hashing or diagnostic formatting.
 4. Normalize hostname case, default ports, separators, trailing slash, and `.git`; preserve repository path case.
-5. When a safe remote exists, its SHA-256 digest is the repository key so separate clones associate. Otherwise use the local identity.
+5. Screen the normalized remote preimage before hashing. When screening makes zero replacements, hash the screened normalized remote so separate clones associate. If screening replaces anything, discard that remote preimage and use local identity instead. No secret-derived hash is retained.
 
 Malformed or ambiguous remotes fall back to local identity. Raw remote strings are never stored or logged.
+
+Repository display name, root, relative cwd, branch, and HEAD are passed through the same capture redactor and become screened values before they can cross the repository boundary. Capture refuses persistence if repository screening fails.
 
 ## SQLite storage
 
@@ -179,6 +192,8 @@ Every connection uses strict bindings and configures:
 - `synchronous=FULL`
 - bounded `busy_timeout`
 
+After WAL initialization and after each first write, enforce mode `0600` on the database, `-wal`, and `-shm` files when those files exist.
+
 Writes remain short. Redaction, Git commands, rendering, and filesystem setup do not occur inside a database transaction.
 
 Numbered migrations are shipped with the application, checksummed, and applied under a serialized immediate transaction. A database newer than the binary is refused without mutation. V1 uses conventional SQLite features available from the macOS system SQLite used by Bun.
@@ -195,7 +210,7 @@ V1 detects only high-confidence forms:
 - credential-bearing URLs
 - assignments whose key clearly denotes a token, secret, key, or password
 
-Matches are replaced with class-only markers such as `[REDACTED:CREDENTIAL]`. The database stores only the sanitized value, replacement count, and redactor version. It never stores secret-derived hashes or correlation tokens.
+Recognized credential/token prefixes use `[REDACTED:CREDENTIAL]`. Other matches use class-only markers such as `[REDACTED:AUTHORIZATION]` and `[REDACTED:PRIVATE_KEY]`. The database stores only the sanitized value, replacement count, and redactor version. It never stores secret-derived hashes or correlation tokens.
 
 The redactor is fail-closed. It has no bypass flag, raw backup, recovery store, verbose payload log, or entropy-based heuristic. Patterns must be simple and performance-tested; byte bounds are applied before regular expressions run.
 
@@ -213,6 +228,7 @@ User scope is the default because this is a personal tool. Repository scope is a
 - Use the active global guidance file according to Codex precedence.
 - Install one versioned, uniquely marked managed block.
 - If a non-empty global override would shadow the intended file, target the active file or report a clear conflict; never claim installation into an ignored file.
+- Repository scope targets the active instruction file at the repository root: non-empty `AGENTS.override.md` first, otherwise `AGENTS.md`.
 
 ### Claude Code
 
@@ -227,13 +243,15 @@ User scope is the default because this is a personal tool. Repository scope is a
 
 ### Safe apply and undo
 
-Adapters produce an ephemeral plan containing target path, preimage digest, desired bytes, safe managed diff, and mode. Plans are never serialized.
+Adapters produce an ephemeral plan containing the selected scope and its canonical root, target path, preimage digest, desired bytes, safe managed diff, and mode. Plans are never serialized.
 
 Apply and undo:
 
 - reject symlinks, non-regular files, malformed or duplicate markers, and paths outside the selected scope
+- walk and `lstat` every existing path component from the canonical scope root to the target, rejecting symlinked parents as well as a symlinked target
 - preserve unrelated bytes, newline style, and existing mode
 - recheck the preimage digest immediately before writing
+- serialize papercuts setup processes with an exclusive lock in the canonical scope root keyed by target-path hash, then repeat path-component and preimage checks immediately before rename; a changed preimage is a conflict
 - write a same-directory exclusive temporary file, flush it, rename atomically, and flush the directory
 - create owned instruction files with mode `0600`
 - make repeated apply and undo operations successful no-ops
@@ -260,6 +278,7 @@ Installed instructions tell agents to:
 - resolved external data directory
 - directory/database ownership and permission problems
 - schema version, SQLite integrity result, and lock availability
+- CLI version, runtime version, SQLite version, current file owner, and expected owner
 - current Git repository attribution when applicable
 - Codex and Claude Code setup state, target paths, and shadowing/conflicts
 - whether `papercuts` is discoverable on `PATH`
@@ -278,7 +297,7 @@ Release gates:
 4. Setup preview leaves fixture trees byte-identical and creates nothing. Apply, reapply, undo preview, and undo apply are idempotent and byte-safe. Symlinks, malformed markers, scope escapes, and concurrent edits fail without mutation.
 5. A standalone executable run with Bun and Node absent from `PATH` persists add/list/export data across separate invocations in an external database.
 6. Older schema fixtures upgrade safely; concurrent migrators serialize; a future schema is refused without mutation.
-7. Hostile Markdown, HTML, Unicode, and long backtick runs remain inert data in deterministic exports.
+7. Hostile Markdown, HTML, Unicode, and long backtick runs in bodies, repository names, branches, relative paths, models, categories, and tags remain inert data in deterministic exports.
 8. `bun test`, `bun run typecheck`, and `bun run build` all exit successfully with clean output.
 
 ## Parallel implementation boundaries
