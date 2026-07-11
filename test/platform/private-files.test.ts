@@ -79,6 +79,22 @@ describe("private file permissions", () => {
 });
 
 describe("assertPathHasNoSymlinkComponents", () => {
+  test("rejects a non-absolute target", async () => {
+    await withTemporaryRootAsync(async (root) => {
+      await expect(
+        assertPathHasNoSymlinkComponents(root, "relative/target"),
+      ).rejects.toThrow("Scope root and target path must be absolute.");
+    });
+  });
+
+  test("rejects a lexical scope escape", async () => {
+    await withTemporaryRootAsync(async (root) => {
+      await expect(
+        assertPathHasNoSymlinkComponents(root, join(root, "..", "outside")),
+      ).rejects.toThrow("Target path is outside the canonical scope root.");
+    });
+  });
+
   test("rejects a symlinked parent component", async () => {
     await withTemporaryRootAsync(async (root) => {
       const realDirectory = join(root, "real");

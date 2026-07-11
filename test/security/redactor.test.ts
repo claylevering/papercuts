@@ -20,11 +20,29 @@ describe("redact", () => {
     test(`redacts ${marker}`, () => {
       const result = redact(raw);
 
-      expect(result.text).toContain(marker);
+      expect(String(result.text)).toBe(marker);
       expect(result.text).not.toContain(raw);
-      expect(result.replacementCount).toBeGreaterThan(0);
+      expect(result.replacementCount).toBe(1);
     });
   }
+
+  test("fully redacts a double-quoted secret containing an escaped quote", () => {
+    const raw = `API_TOKEN="${"F".repeat(24)}\\"${"G".repeat(24)}"`;
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("fully redacts a single-quoted secret containing an escaped quote", () => {
+    const raw = `API_TOKEN='${"H".repeat(24)}\\'${"I".repeat(24)}'`;
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
 
   test("redacts a private-key block with a class-only marker", () => {
     const raw = [

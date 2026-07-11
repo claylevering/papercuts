@@ -1,4 +1,37 @@
+import type { ScreenedText } from "./types";
+
 type PapercutsExitCode = 1 | 2 | 3 | 4 | 5 | 6;
+declare const safeMessageBrand: unique symbol;
+
+export type SafeMessage = string & {
+  readonly [safeMessageBrand]: true;
+};
+
+export function safeMessage(
+  strings: TemplateStringsArray,
+  ...substitutions: never[]
+): SafeMessage {
+  if (
+    substitutions.length !== 0 ||
+    strings.length !== 1 ||
+    !Object.isFrozen(strings) ||
+    !Object.isFrozen(strings.raw)
+  ) {
+    throw new TypeError(
+      "Safe messages must be fixed template literals without interpolations.",
+    );
+  }
+
+  const message = strings[0];
+
+  if (message === undefined) {
+    throw new TypeError(
+      "Safe messages must be fixed template literals without interpolations.",
+    );
+  }
+
+  return message as SafeMessage;
+}
 
 export class PapercutsError extends Error {
   override readonly name = "PapercutsError";
@@ -8,7 +41,7 @@ export class PapercutsError extends Error {
 
   constructor(input: {
     code: string;
-    message: string;
+    message: SafeMessage | ScreenedText;
     exitCode: PapercutsExitCode;
     retryable: boolean;
   }) {
