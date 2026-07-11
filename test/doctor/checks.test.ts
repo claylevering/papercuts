@@ -366,6 +366,52 @@ describe("runDoctor", () => {
     expect(report.ok).toBe(false);
   });
 
+  test("flags a foreign-owned data directory even with owner-only mode", async () => {
+    const environment = makeEnvironment();
+    const { dataDir, databasePath } = resolvePapercutsPaths(environment);
+    const stats = new Map<string, DoctorPathInfo | null>([
+      [dataDir, directoryInfo(0o700, 999)],
+      [databasePath, fileInfo(0o600, 501)],
+    ]);
+
+    const report = await runDoctor(
+      makeContext({
+        environment,
+        stats,
+        currentUid: 501,
+      }),
+    );
+
+    const check = checkByName(report, "data-directory");
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("999");
+    expect(check.message).toContain("501");
+    expect(report.ok).toBe(false);
+  });
+
+  test("flags a foreign-owned database even with owner-only mode", async () => {
+    const environment = makeEnvironment();
+    const { dataDir, databasePath } = resolvePapercutsPaths(environment);
+    const stats = new Map<string, DoctorPathInfo | null>([
+      [dataDir, directoryInfo(0o700, 501)],
+      [databasePath, fileInfo(0o600, 999)],
+    ]);
+
+    const report = await runDoctor(
+      makeContext({
+        environment,
+        stats,
+        currentUid: 501,
+      }),
+    );
+
+    const check = checkByName(report, "database-file");
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("999");
+    expect(check.message).toContain("501");
+    expect(report.ok).toBe(false);
+  });
+
   test("flags integrity failure and a future schema as errors", async () => {
     const environment = makeEnvironment();
     const { dataDir, databasePath } = resolvePapercutsPaths(environment);

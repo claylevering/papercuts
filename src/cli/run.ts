@@ -190,7 +190,10 @@ async function runAdd(parsed: AddCommand, runtime: CliRuntime): Promise<number> 
     throw new PapercutsError("invalid_input");
   }
 
-  const store = openDataStore(runtime);
+  // The store opens lazily on first append, so every capture-layer rejection
+  // (metadata validation, redaction growth past a byte bound, safety failures)
+  // completes without ever materializing the database.
+  const store = openLazyDataStore(runtime);
 
   try {
     const service = createCaptureService({
@@ -509,21 +512,43 @@ function toRfc3339Utc(epochMs: number): string {
   return new Date(epochMs).toISOString();
 }
 
-function openDataStore(runtime: CliRuntime): PapercutStore {
-  const environment = runtime.environment;
-  let databasePath: string;
-
+function resolveDatabasePath(environment: CliEnvironment): string {
   try {
-    ({ databasePath } = resolvePapercutsPaths(
+    const { databasePath } = resolvePapercutsPaths(
       environment.papercutsHome === undefined
         ? { home: environment.home }
         : { home: environment.home, papercutsHome: environment.papercutsHome },
-    ));
+    );
+    return databasePath;
   } catch {
     throw new PapercutsError("invalid_input");
   }
+}
 
-  return runtime.openStore(databasePath);
+function openDataStore(runtime: CliRuntime): PapercutStore {
+  return runtime.openStore(resolveDatabasePath(runtime.environment));
+}
+
+/**
+ * A {@link PapercutStore} facade that validates the data path eagerly but
+ * defers `openStore` until the first store operation. Closing before any
+ * operation is a no-op, so a command that fails during validation or
+ * redaction never creates an empty database.
+ */
+function openLazyDataStore(runtime: CliRuntime): PapercutStore {
+  const databasePath = resolveDatabasePath(runtime.environment);
+  let opened: PapercutStore | null = null;
+  const open = (): PapercutStore =>
+    (opened ??= runtime.openStore(databasePath));
+
+  return {
+    append: (record) => open().append(record),
+    list: (query) => open().list(query),
+    health: () => open().health(),
+    close: () => {
+      opened?.close();
+    },
+  };
 }
 
 async function withStore<T>(

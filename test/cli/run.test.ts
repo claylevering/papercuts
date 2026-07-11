@@ -462,6 +462,20 @@ describe("runCli never opens the store for pre-store failures and previews", () 
       exitCode: 2,
     },
     {
+      // 59 raw bytes pass the parse bound; the redaction marker grows the
+      // tag to 69 bytes, past its 64-byte bound, inside the capture layer.
+      name: "tag that grows past its bound after redaction",
+      argv: ["add", "a body", "--tag", `${"b".repeat(44)} Authorization:`],
+      exitCode: 2,
+    },
+    {
+      // 65,536 raw bytes pass the parse bound; the redaction marker grows
+      // the body to 65,546 bytes, past its bound, inside the capture layer.
+      name: "body that grows past its bound after redaction",
+      argv: ["add", `${"a".repeat(65_521)} Authorization:`],
+      exitCode: 2,
+    },
+    {
       name: "list --repo current outside Git",
       argv: ["list", "--repo", "current"],
       exitCode: 2,
@@ -624,7 +638,24 @@ describe("runCli stats", () => {
     expect(data["scope"]).toEqual({ kind: "all" });
     expect(data["total"]).toBe(2);
     expect(harness.queries[0]).not.toHaveProperty("limit");
+    expect(harness.queries[0]).toEqual({ order: "oldest" });
     expect(harness.closeCalls).toBe(1);
+  });
+
+  test("queries the store oldest-first with the --since window and no limit", async () => {
+    const harness = createHarness({ repoContext: null });
+
+    const exitCode = await runCli(
+      ["stats", "--since", "24h", "--json"],
+      harness.runtime,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(harness.queries).toHaveLength(1);
+    expect(harness.queries[0]).toEqual({
+      sinceMs: NOW_MS - 86_400_000,
+      order: "oldest",
+    });
   });
 });
 
@@ -651,6 +682,23 @@ describe("runCli export", () => {
     expect(data["recordCount"]).toBe(1);
     expect(data["outputPath"]).toBeNull();
     expect(String(data["markdown"])).toContain("# Papercuts");
+    expect(harness.queries[0]).toEqual({ order: "oldest" });
+  });
+
+  test("queries the store oldest-first with the --since window and no limit", async () => {
+    const harness = createHarness({ repoContext: null });
+
+    const exitCode = await runCli(
+      ["export", "--since", "7d", "--json"],
+      harness.runtime,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(harness.queries).toHaveLength(1);
+    expect(harness.queries[0]).toEqual({
+      sinceMs: NOW_MS - 604_800_000,
+      order: "oldest",
+    });
   });
 
   test("human mode writes the Markdown document to stdout", async () => {

@@ -190,7 +190,11 @@ async function checkDataDirectory(
   if (info.uid !== context.currentUid) {
     return error(
       "data-directory",
-      "The external data directory is owned by another user.",
+      ownedByAnotherUserMessage(
+        "The external data directory",
+        info.uid,
+        context.currentUid,
+      ),
     );
   }
 
@@ -238,7 +242,10 @@ async function checkDatabaseFile(
   }
 
   if (info.uid !== context.currentUid) {
-    return error("database-file", "The database is owned by another user.");
+    return error(
+      "database-file",
+      ownedByAnotherUserMessage("The database", info.uid, context.currentUid),
+    );
   }
 
   if ((info.mode & NON_OWNER_BITS) !== 0) {
@@ -448,6 +455,19 @@ function resolveDataPaths(environment: DoctorEnvironment): {
   } catch {
     throw new PapercutsError("invalid_input");
   }
+}
+
+/**
+ * Format an ownership mismatch with the current and expected numeric user
+ * ids. Both values are filesystem/process metadata — never environment
+ * values, path contents, or user input — so they are safe to surface.
+ */
+function ownedByAnotherUserMessage(
+  subject: string,
+  ownerUid: number,
+  expectedUid: number,
+): string {
+  return `${subject} is owned by user id ${ownerUid}; the expected owner is user id ${expectedUid}.`;
 }
 
 function ok(name: string, message: string): DoctorCheck {

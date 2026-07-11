@@ -87,6 +87,28 @@ describe("readBoundedStdin", () => {
     expect(result).toHaveLength(MAX_BYTES);
   });
 
+  test("accepts multi-byte input at exactly the byte bound", async () => {
+    // 32,768 two-byte characters: exactly 65,536 UTF-8 bytes.
+    const payload = "é".repeat(MAX_BYTES / 2);
+
+    const result = await readBoundedStdin(
+      streamOf(encoder.encode(payload)),
+      MAX_BYTES,
+    );
+
+    expect(result).toBe(payload);
+  });
+
+  test("counts bytes, not characters: multi-byte input over the byte bound is rejected", async () => {
+    // 32,769 two-byte characters: 65,538 UTF-8 bytes but only 32,769 UTF-16
+    // code units, so a character- or code-unit-counting bound would accept it.
+    const payload = "é".repeat(MAX_BYTES / 2 + 1);
+
+    await expect(
+      readBoundedStdin(streamOf(encoder.encode(payload)), MAX_BYTES),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
   test("rejects input one byte over the bound in a single chunk", async () => {
     const payload = "a".repeat(MAX_BYTES + 1);
 
