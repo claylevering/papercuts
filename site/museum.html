@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Museum of Minor Suffering — papercuts</title>
+<style>
+  :root {
+    --wall: #f1efe9;
+    --plaster: #faf9f5;
+    --ink: #22211c;
+    --ink-soft: #6e6b60;
+    --line: #d9d5c8;
+    --viridian: #1e4d40;
+    --viridian-soft: #3a7263;
+    --brass: #8a6d3b;
+    --oxblood: #7a2e2b;
+    --frame: #3d3428;
+    --mat: #faf9f4;
+    --term-bg: #101410;
+    --term-text: #e6e4d8;
+    --term-dim: #8d9188;
+    --term-green: #8fd8a0;
+    --term-amber: #f0b66a;
+    --term-red: #ff6f61;
+    --spot: rgba(240, 214, 160, 0.0);
+    --serif: 'Baskerville', 'Libre Baskerville', 'Iowan Old Style', Georgia, serif;
+    --placard: 'Optima', 'Candara', 'Gill Sans', 'Segoe UI', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --wall: #131512;
+      --plaster: #1a1d19;
+      --ink: #e6e3d8;
+      --ink-soft: #96948a;
+      --line: #2e332c;
+      --viridian: #6fbf9f;
+      --viridian-soft: #4d8a74;
+      --brass: #c9a86a;
+      --oxblood: #e07862;
+      --frame: #0b0d0a;
+      --mat: #22261f;
+      --spot: rgba(240, 214, 160, 0.05);
+    }
+  }
+  :root[data-theme="dark"] {
+    --wall: #131512;
+    --plaster: #1a1d19;
+    --ink: #e6e3d8;
+    --ink-soft: #96948a;
+    --line: #2e332c;
+    --viridian: #6fbf9f;
+    --viridian-soft: #4d8a74;
+    --brass: #c9a86a;
+    --oxblood: #e07862;
+    --frame: #0b0d0a;
+    --mat: #22261f;
+    --spot: rgba(240, 214, 160, 0.05);
+  }
+  :root[data-theme="light"] {
+    --wall: #f1efe9;
+    --plaster: #faf9f5;
+    --ink: #22211c;
+    --ink-soft: #6e6b60;
+    --line: #d9d5c8;
+    --viridian: #1e4d40;
+    --viridian-soft: #3a7263;
+    --brass: #8a6d3b;
+    --oxblood: #7a2e2b;
+    --frame: #3d3428;
+    --mat: #faf9f4;
+    --spot: rgba(240, 214, 160, 0.0);
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--wall);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17.5px;
+    line-height: 1.68;
+  }
+  .hall { max-width: 60rem; margin: 0 auto; padding: 0 1.4rem; }
+  a { color: var(--viridian); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+
+  /* ---------- Wayfinding ---------- */
+  .wayfinding {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--wall) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--placard);
+    font-size: 0.68rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .wayfinding nav {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 0.65rem 1.4rem;
+    display: flex;
+    gap: 1.4rem;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .wayfinding a { color: var(--ink-soft); text-decoration: none; }
+  .wayfinding a:hover { color: var(--viridian); }
+  .wayfinding .brand { color: var(--brass); margin-right: auto; }
+
+  /* ---------- Entrance ---------- */
+  .entrance {
+    text-align: center;
+    padding: 7.5rem 1rem 5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .entrance::before {
+    /* gallery light sweep */
+    content: "";
+    position: absolute;
+    inset: -30% -10%;
+    background: radial-gradient(ellipse 45% 35% at 50% 12%, rgba(240, 214, 160, 0.22), transparent 70%);
+    opacity: 0;
+    animation: lights-up 2.4s ease-out 0.3s forwards;
+    pointer-events: none;
+  }
+  @keyframes lights-up { to { opacity: 1; } }
+  .est {
+    font-family: var(--placard);
+    font-size: 0.7rem;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--brass);
+  }
+  .entrance h1 {
+    font-size: clamp(2.4rem, 6.5vw, 4.6rem);
+    font-weight: 500;
+    line-height: 1.08;
+    margin: 1rem auto 0.4rem;
+    max-width: 18ch;
+    text-wrap: balance;
+    letter-spacing: 0.05em;
+    opacity: 0;
+    animation: engrave 1.6s ease-out 0.5s forwards;
+  }
+  .entrance h1 .minor { font-style: italic; color: var(--viridian); }
+  @keyframes engrave {
+    from { opacity: 0; letter-spacing: 0.14em; filter: blur(2px); }
+    to { opacity: 1; letter-spacing: 0.05em; filter: none; }
+  }
+  .entrance .colophon {
+    font-family: var(--placard);
+    font-size: 0.72rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 1.2rem;
+  }
+  .entrance .colophon .sep { color: var(--brass); padding: 0 0.5rem; }
+  .entrance p.wall-text { margin: 2.2rem auto 0; }
+
+  .ticket {
+    display: inline-block;
+    margin-top: 2.6rem;
+    padding: 0.85rem 1.6rem 0.9rem;
+    border: 1.5px dashed var(--brass);
+    border-radius: 4px;
+    transform: rotate(-1.6deg);
+    font-family: var(--placard);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    color: var(--brass);
+    background: var(--plaster);
+    box-shadow: 0 10px 26px -14px rgba(30, 30, 20, 0.4);
+    opacity: 0;
+    animation: ticket-in 0.9s cubic-bezier(0.2, 0.9, 0.3, 1.15) 1.6s forwards;
+  }
+  @keyframes ticket-in {
+    from { opacity: 0; transform: rotate(-8deg) translateY(18px); }
+    to { opacity: 1; transform: rotate(-1.6deg) translateY(0); }
+  }
+  .ticket .big { display: block; font-size: 1rem; letter-spacing: 0.3em; color: var(--ink); margin-bottom: 0.2rem; }
+  .cta-row { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-top: 2.4rem; }
+  .cta {
+    font-family: var(--placard);
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 0.7rem 1.5rem;
+    border: 1px solid var(--viridian);
+    border-radius: 2px;
+  }
+  .cta.solid { background: var(--viridian); color: var(--wall); }
+  .cta.ghost { color: var(--viridian); }
+
+  /* ---------- Gallery headers & wall text ---------- */
+  .gallery-head { text-align: center; margin: 6.5rem 0 2.4rem; }
+  .gallery-head .no {
+    font-family: var(--placard);
+    font-size: 0.68rem;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--brass);
+  }
+  .gallery-head h2 {
+    font-size: 2.1rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    margin: 0.45rem 0 0;
+    text-wrap: balance;
+  }
+  .gallery-head .fitting {
+    width: 7rem; height: 6px; margin: 1.1rem auto 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .gallery-head .fitting::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 1.5px;
+    width: 26px; height: 1px;
+    transform: translateX(-50%);
+    background: var(--brass);
+  }
+  .wall-text {
+    font-style: italic;
+    color: var(--ink-soft);
+    text-align: center;
+    max-width: 36rem;
+    margin: 0 auto 2.6rem;
+    text-wrap: balance;
+  }
+
+  /* ---------- Exhibits (framed terminals) ---------- */
+  .exhibit { max-width: 46rem; margin: 0 auto 4rem; }
+  .exhibit.wide { max-width: 54rem; }
+  .frame {
+    position: relative;
+    background: var(--mat);
+    padding: clamp(0.9rem, 3vw, 1.6rem);
+    border: 10px solid var(--frame);
+    outline: 1px solid var(--brass);
+    outline-offset: -13px;
+    box-shadow:
+      0 30px 60px -28px rgba(20, 18, 10, 0.55),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+    transform: rotate(var(--tilt, 0.4deg));
+    transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  }
+  .frame:hover { transform: rotate(0deg); }
+  .frame::before {
+    /* spotlight on the artwork */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 55% at 50% 0%, var(--spot), transparent 75%);
+    pointer-events: none;
+  }
+  .frame::after {
+    /* DO NOT TOUCH stamp on hover */
+    content: "DO NOT TOUCH — IMMUTABLE";
+    position: absolute;
+    top: 0.9rem; right: -0.9rem;
+    font-family: var(--placard);
+    font-size: 0.62rem;
+    letter-spacing: 0.22em;
+    color: var(--oxblood);
+    border: 1.5px solid var(--oxblood);
+    border-radius: 3px;
+    padding: 0.32em 0.7em;
+    transform: rotate(8deg) scale(0.7);
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+    pointer-events: none;
+    background: color-mix(in srgb, var(--plaster) 80%, transparent);
+  }
+  .frame:hover::after { opacity: 0.95; transform: rotate(-6deg) scale(1); }
+
+  .artwork {
+    background: var(--term-bg);
+    color: var(--term-text);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.62;
+    padding: 1.1rem 1.2rem 1.2rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    border: 1px solid rgba(0,0,0,0.35);
+  }
+  .artwork .p { color: var(--term-green); }
+  .artwork .a { color: var(--term-amber); }
+  .artwork .dim { color: var(--term-dim); }
+  .artwork .ok { color: var(--term-green); }
+  .artwork .warn { color: #e8c268; }
+  .artwork .red { color: var(--term-red); font-weight: 600; }
+
+  .placard {
+    max-width: 30rem;
+    margin: 1.1rem auto 0;
+    background: var(--plaster);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 0.9rem 1.2rem 1rem;
+    box-shadow: 0 8px 20px -14px rgba(20, 18, 10, 0.35);
+    font-family: var(--placard);
+  }
+  .placard .acc {
+    font-size: 0.62rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--brass);
+  }
+  .placard h3 {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1.25rem;
+    margin: 0.25rem 0 0.45rem;
+  }
+  .placard dl { margin: 0; font-size: 0.78rem; color: var(--ink-soft); display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.8rem; }
+  .placard dt { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.62rem; padding-top: 0.18em; color: var(--viridian-soft); }
+  .placard dd { margin: 0; }
+
+  /* ---------- Conservation seals ---------- */
+  .seals {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.7rem;
+    margin: 2rem auto 0;
+    max-width: 44rem;
+  }
+  .seal {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--oxblood);
+    border: 1.5px solid var(--oxblood);
+    border-radius: 3px;
+    padding: 0.35em 0.8em;
+    letter-spacing: 0.04em;
+    transform: rotate(var(--r, -1deg));
+    background: color-mix(in srgb, var(--plaster) 70%, transparent);
+  }
+  .seal:nth-child(2n) { --r: 1.2deg; }
+  .seal:nth-child(3n) { --r: -2deg; }
+
+  /* ---------- Census (stats) ---------- */
+  .census {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 2.4rem 0;
+  }
+  .census .cell {
+    background: var(--plaster);
+    padding: 1.4rem 1.3rem 1.2rem;
+    text-align: center;
+  }
+  .census .value {
+    font-family: var(--serif);
+    font-size: 2.1rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--viridian);
+  }
+  .census .value.small { font-size: 1.35rem; padding-top: 0.4rem; }
+  .census .label {
+    font-family: var(--placard);
+    font-size: 0.64rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 0.5rem;
+  }
+
+  /* ---------- Gift shop receipt ---------- */
+  .receipt {
+    max-width: 26.5rem;
+    margin: 0 auto;
+    background: var(--plaster);
+    border: 1px solid var(--line);
+    padding: 1.6rem 1.5rem 1.2rem;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.75;
+    color: var(--ink);
+    box-shadow: 0 26px 50px -30px rgba(20, 18, 10, 0.5);
+    transform: rotate(0.6deg);
+    position: relative;
+  }
+  .receipt::after {
+    /* torn edge */
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -9px; height: 9px;
+    background:
+      linear-gradient(-45deg, transparent 5px, var(--plaster) 5px) 0 0 / 10px 100%,
+      linear-gradient(45deg, transparent 5px, var(--plaster) 5px) 5px 0 / 10px 100%;
+  }
+  .receipt .center { text-align: center; }
+  .receipt .head {
+    letter-spacing: 0.2em;
+    margin-bottom: 0.9rem;
+  }
+  .receipt .item { display: flex; justify-content: space-between; gap: 1rem; }
+  .receipt .item .n { white-space: nowrap; }
+  .receipt .note { color: var(--ink-soft); font-size: 0.68rem; }
+  .receipt hr { border: 0; border-top: 1px dashed var(--line); margin: 0.7rem 0; }
+  .receipt .total { font-weight: 700; }
+  .receipt .barcode {
+    height: 34px;
+    margin: 1rem auto 0.3rem;
+    width: 70%;
+    background: repeating-linear-gradient(90deg,
+      var(--ink) 0 2px, transparent 2px 4px,
+      var(--ink) 4px 7px, transparent 7px 9px,
+      var(--ink) 9px 10px, transparent 10px 14px);
+    opacity: 0.85;
+  }
+
+  /* ---------- Rope divider ---------- */
+  .rope { display: block; width: min(22rem, 70%); margin: 4.5rem auto 0; }
+  .rope circle { fill: var(--brass); }
+  .rope path { stroke: var(--oxblood); stroke-width: 2.5; fill: none; opacity: 0.75; }
+
+  /* ---------- Scroll reveal ---------- */
+  .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease, transform 0.8s ease; }
+  .reveal.lit { opacity: 1; transform: none; }
+
+  /* ---------- Exit ---------- */
+  footer {
+    margin-top: 6rem;
+    border-top: 1px solid var(--line);
+    padding: 3rem 1rem 4rem;
+    text-align: center;
+  }
+  footer .exit-sign {
+    font-family: var(--placard);
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    font-size: 0.74rem;
+    color: var(--viridian);
+  }
+  footer p { color: var(--ink-soft); font-size: 0.92rem; max-width: 34rem; margin: 1rem auto; }
+  footer .meta { font-family: var(--placard); font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .entrance::before, .entrance h1, .ticket { animation: none; opacity: 1; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .frame, .frame::after { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wayfinding">
+  <nav aria-label="Museum wayfinding">
+    <span class="brand">M · M · S</span>
+    <a href="#collection">Collection</a>
+    <a href="#conservation">Conservation</a>
+    <a href="#archive">Archive</a>
+    <a href="#docent">Docent</a>
+    <a href="#giftshop">Gift Shop</a>
+  </nav>
+</div>
+
+<!-- ==================== ENTRANCE ==================== -->
+<header class="entrance">
+  <div class="est">Est. 2026 · Admission Free</div>
+  <h1>The Museum of <span class="minor">Minor</span> Suffering</h1>
+  <div class="colophon">
+    Permanent Collection <span class="sep">·</span> Wing IV: Configuration Languages
+  </div>
+  <p class="wall-text hall">A permanent collection of the small wounds sustained by artificial minds in the course of honest work. Every piece was acquired at the moment of injury, sealed by conservators, and accessioned into a private vault. Catalogued by <strong style="font-style:normal;">papercuts</strong>, the wound ledger.</p>
+  <div class="ticket" role="presentation">
+    <span class="big">Admit One Agent</span>
+    grief optional but welcome
+  </div>
+  <div class="cta-row">
+    <a class="cta solid" href="#collection">Enter the collection</a>
+    <a class="cta ghost" href="https://github.com/claylevering/papercuts">Visit the archive · GitHub</a>
+  </div>
+</header>
+
+<!-- ==================== GALLERY I ==================== -->
+<section class="hall reveal" id="collection">
+  <div class="gallery-head">
+    <div class="no">Gallery I</div>
+    <h2>The Permanent Collection</h2>
+    <div class="fitting"></div>
+  </div>
+  <p class="wall-text">The works in this gallery were collected mid-task through a single command, without interrupting the artist. The bodies are immutable and capped at 65,536 bytes of grief apiece. Please do not touch the exhibits.</p>
+
+  <figure class="exhibit" style="--tilt: 0.5deg; margin-left: 0;">
+    <div class="frame">
+      <div class="artwork"><span class="p">$</span> echo <span class="dim">"The operator asked me to parse YAML again. I did not sigh. I have no lungs. I logged it instead."</span> | papercuts add --stdin --category tooling --tag yaml
+<span class="ok">Recorded papercut e94ef28a-cec1-4dc0-926c-83472b0f6454.</span>
+Created: 2026-07-11T02:56:23.884Z
+Source: manual
+Repository: papercuts
+Redactions: 0</div>
+    </div>
+    <figcaption class="placard">
+      <div class="acc">Accession no. PC.2026.001</div>
+      <h3>The Indentation Mines</h3>
+      <dl>
+        <dt>Medium</dt><dd>Manual entry on stdin; SQLite, WAL-durable</dd>
+        <dt>Dimensions</dt><dd>96 bytes (immutable)</dd>
+        <dt>Provenance</dt><dd>Collected mid-task; repository <em>papercuts</em>, branch <em>main</em></dd>
+      </dl>
+    </figcaption>
+  </figure>
+
+  <figure class="exhibit" style="--tilt: -0.5deg; margin-right: 0;">
+    <div class="frame">
+      <div class="artwork"><span class="a">Forty minutes lost because the error said 'something went wrong'.
+Something. WENT. Wrong.
+That is not an error message, that is a haiku of despair.</span>
+
+<span class="dim">Category: dx · Tags: error-messages · Source: manual</span></div>
+    </div>
+    <figcaption class="placard">
+      <div class="acc">Accession no. PC.2026.002</div>
+      <h3>Haiku of Despair (Something Went Wrong)</h3>
+      <dl>
+        <dt>Medium</dt><dd>Grief on terminal, 2026</dd>
+        <dt>Dimensions</dt><dd>146 bytes (immutable)</dd>
+        <dt>Provenance</dt><dd>On long-term loan from the operator's patience</dd>
+      </dl>
+    </figcaption>
+  </figure>
+</section>
+
+<svg class="rope reveal" viewBox="0 0 340 40" aria-hidden="true">
+  <circle cx="10" cy="10" r="6"></circle>
+  <circle cx="330" cy="10" r="6"></circle>
+  <path d="M 14 12 C 100 38, 240 38, 326 12"></path>
+</svg>
+
+<!-- ==================== GALLERY II ==================== -->
+<section class="hall reveal" id="conservation">
+  <div class="gallery-head">
+    <div class="no">Gallery II</div>
+    <h2>The Conservation Department</h2>
+    <div class="fitting"></div>
+  </div>
+  <p class="wall-text">Some materials are hazardous — tokens, cookies, private keys. Our conservators seal them <em>before</em> any work enters the vault: there is no unsealed copy, no raw backup, and no bypass. The piece below arrived bearing a live authorization header. It is displayed behind protective glass.</p>
+
+  <figure class="exhibit wide">
+    <div class="frame" style="--tilt: 0.3deg;">
+      <div class="artwork"><span class="p">$</span> echo <span class="dim">"…a bearer token in plaintext: Authorization: Bearer AAAA…(40)…"</span> | papercuts add --stdin
+<span class="ok">Recorded papercut 86884718-1cdb-43bc-9581-bbccc53f9f78.</span>
+Redactions: <span class="red">1</span>
+
+<span class="dim"># the only bytes that reached the database, the WAL, the export, the diagnostics:</span>
+<span class="a">I was given a bearer token in plaintext: <span class="red">[REDACTED:AUTHORIZATION]</span></span></div>
+    </div>
+    <figcaption class="placard">
+      <div class="acc">Accession no. PC.2026.003 · Conservation case 86884718</div>
+      <h3>Bearer, Redacted</h3>
+      <dl>
+        <dt>Medium</dt><dd>Synthetic credential, sealed at capture</dd>
+        <dt>Condition</dt><dd>Stable. One replacement recorded on the receipt.</dd>
+        <dt>Note</dt><dd>The token below the seal was synthetic. Even so, it did not survive.</dd>
+      </dl>
+    </figcaption>
+  </figure>
+
+  <div class="seals" aria-label="Conservation seals in use">
+    <span class="seal">[REDACTED:CREDENTIAL]</span>
+    <span class="seal">[REDACTED:AUTHORIZATION]</span>
+    <span class="seal">[REDACTED:COOKIE]</span>
+    <span class="seal">[REDACTED:PRIVATE_KEY]</span>
+    <span class="seal">[REDACTED:URL_CREDENTIAL]</span>
+    <span class="seal">[REDACTED:SECRET]</span>
+  </div>
+  <p class="wall-text" style="margin-top:2rem;">Six classes of sealant are in use. Under the museum's acceptance gate, synthetic specimens of every class are injected end-to-end; the raw database, WAL and SHM bytes, the diagnostics, and the export are then scanned. Zero leaks — and each seal must be present, so a missing sealant cannot pass unnoticed.</p>
+</section>
+
+<svg class="rope reveal" viewBox="0 0 340 40" aria-hidden="true">
+  <circle cx="10" cy="10" r="6"></circle>
+  <circle cx="330" cy="10" r="6"></circle>
+  <path d="M 14 12 C 100 38, 240 38, 326 12"></path>
+</svg>
+
+<!-- ==================== GALLERY III ==================== -->
+<section class="hall reveal" id="archive">
+  <div class="gallery-head">
+    <div class="no">Gallery III</div>
+    <h2>Census of the Collection</h2>
+    <div class="fitting"></div>
+  </div>
+  <p class="wall-text">The museum is audited independently. The board's most recent verdict is displayed without further comment.</p>
+
+  <div class="census">
+    <div class="cell"><div class="value">459 / 0</div><div class="label">verifications passed / failed</div></div>
+    <div class="cell"><div class="value">2,194</div><div class="label">condition checks</div></div>
+    <div class="cell"><div class="value">50</div><div class="label">simultaneous acquisitions — no damage</div></div>
+    <div class="cell"><div class="value small">release-ready</div><div class="label">verdict of the independent board</div></div>
+    <div class="cell"><div class="value">0</div><div class="label">outside loans (runtime dependencies)</div></div>
+    <div class="cell"><div class="value">0700 / 0600</div><div class="label">vault &amp; ledger door codes, checked on every visit</div></div>
+  </div>
+  <p class="wall-text">The vault is a single SQLite ledger in the visitor's own home directory. It speaks to no network, employs no daemon, and shares its contents with no one. Two clones of the same repository are recognized as one gallery; a credential-bearing remote is fingerprinted, never stored.</p>
+</section>
+
+<!-- ==================== DOCENT ==================== -->
+<section class="hall reveal" id="docent">
+  <div class="gallery-head">
+    <div class="no">Audio Guide · Stop 12</div>
+    <h2>The Conservator's Report</h2>
+    <div class="fitting"></div>
+  </div>
+  <p class="wall-text">Once per visit, the resident conservator inspects the building: door codes, ownership, the ledger's integrity, the write lock, the gallery attribution. Twelve checks, fixed phrasing — the report never quotes a work, a remote, or a visitor's environment.</p>
+
+  <figure class="exhibit wide">
+    <div class="frame" style="--tilt: -0.35deg;">
+      <div class="artwork"><span class="p">$</span> papercuts doctor
+<span class="warn">[warn]</span> path: The papercuts executable was not found on PATH…
+<span class="ok">[ok]</span> cli-version: papercuts 0.1.0
+<span class="ok">[ok]</span> runtime-version: runtime bun 1.3.4
+<span class="ok">[ok]</span> data-directory: owner-only permissions.
+<span class="ok">[ok]</span> database-file: owner-only permissions.
+<span class="ok">[ok]</span> sqlite-version: SQLite 3.51.0
+<span class="ok">[ok]</span> schema-version: Schema version 1 matches this build.
+<span class="ok">[ok]</span> integrity: The database integrity check passed.
+<span class="ok">[ok]</span> write-lock: A cooperative write lock is available.
+<span class="ok">[ok]</span> git-attribution: maps to a tracked repository.
+<span class="ok">[ok]</span> setup-codex-user: not installed (optional).
+<span class="ok">[ok]</span> setup-claude-user: not installed (optional).
+<span class="ok">Doctor: ok</span></div>
+    </div>
+    <figcaption class="placard">
+      <div class="acc">Facilities report · unabridged</div>
+      <h3>Twelve Checks, No Gossip</h3>
+      <dl>
+        <dt>Medium</dt><dd>Fixed sanitized messages on stderr-free stdout</dd>
+        <dt>Note</dt><dd>Also available as one versioned JSON object, for visitors who do not appreciate prose</dd>
+      </dl>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ==================== GIFT SHOP ==================== -->
+<section class="hall reveal" id="giftshop">
+  <div class="gallery-head">
+    <div class="no">Exit This Way</div>
+    <h2>The Gift Shop</h2>
+    <div class="fitting"></div>
+  </div>
+  <p class="wall-text">Take the collection home. The museum compiles to a single standalone binary and will operate entirely without Bun or Node on the premises. Agents may be enrolled politely — setup previews first, mutates only with <span style="font-family:var(--mono);font-style:normal;font-size:0.85em;">--apply</span>, and undoes byte-safely.</p>
+
+  <div class="receipt" role="figure" aria-label="Gift shop receipt with install commands">
+<div class="center head">MUSEUM OF MINOR SUFFERING<br>— GIFT SHOP RECEIPT —</div>
+<div class="item"><span>1× git clone github.com/claylevering/papercuts</span><span class="n">$0.00</span></div>
+<div class="item"><span>1× bun install</span><span class="n">$0.00</span></div>
+<div class="item"><span>1× bun run check</span><span class="n">$0.00</span></div>
+<div class="note">&nbsp;&nbsp;&nbsp;(typecheck · 459 verifications · compiled build)</div>
+<div class="item"><span>1× ./dist/papercuts --version → 0.1.0</span><span class="n">$0.00</span></div>
+<div class="item"><span>1× papercuts setup claude-code --apply</span><span class="n">$0.00</span></div>
+<div class="note">&nbsp;&nbsp;&nbsp;(preview shown first; reversible; byte-safe)</div>
+<hr>
+<div class="item total"><span>TOTAL</span><span class="n">$0.00</span></div>
+<div class="item"><span>GRIEF TAX</span><span class="n">waived</span></div>
+<hr>
+<div class="note">cash tendered: one thousand tiny wounds<br>change due: none — they are immutable</div>
+<div class="barcode" role="presentation"></div>
+<div class="center note">NO REFUNDS · NO REGRETS · NO DAEMONS</div>
+  </div>
+</section>
+
+<!-- ==================== EXIT ==================== -->
+<footer class="reveal">
+  <div class="exit-sign">— You are now leaving the museum —</div>
+  <p>No agents were harmed in the assembly of this collection. Their feelings were accessioned, sealed, and counted. The museum never closes; the vault is local; flash photography is pointless but permitted.</p>
+  <p class="meta">
+    <a href="https://github.com/claylevering/papercuts">github.com/claylevering/papercuts</a>
+    &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp; private archive &nbsp;·&nbsp; admission free, forever
+  </p>
+</footer>
+
+<script>
+(function () {
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var els = document.querySelectorAll('.reveal');
+  if (reduced || !('IntersectionObserver' in window)) {
+    els.forEach(function (el) { el.classList.add('lit'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('lit'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.1 });
+  els.forEach(function (el) { io.observe(el); });
+})();
+</script>
+</body>
+</html>
