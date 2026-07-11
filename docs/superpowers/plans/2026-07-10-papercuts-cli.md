@@ -925,7 +925,7 @@ Commit: `feat: expose the papercuts CLI`
 - Consumes: the compiled CLI and all public behavior.
 - Produces: release evidence and testing instructions for the user.
 
-- [ ] **Step 1: Write the secret-boundary acceptance test**
+- [x] **Step 1: Write the secret-boundary acceptance test**
 
 Generate unique synthetic canaries for every supported secret class, including all three credential-prefix families from Task 1. Add via stdin, then inspect stdout/stderr, SQLite query results, database/WAL/SHM bytes, doctor output, and Markdown export. No raw canary may appear. The test must use only synthetic credentials and must assert each expected class marker appears in the queried redacted body so an omitted matcher cannot make the test vacuously pass.
 
@@ -933,7 +933,7 @@ Run: `bun test test/acceptance/secret-boundary.test.ts`
 
 Expected: PASS on the integrated implementation; any leak is a release blocker and must be fixed with a focused failing regression test.
 
-- [ ] **Step 2: Write concurrent first-use and compiled persistence tests**
+- [x] **Step 2: Write concurrent first-use and compiled persistence tests**
 
 Launch fifty CLI processes against a nonexistent temporary `PAPERCUTS_HOME`, assert fifty records, schema version 1, owner-only database/WAL/SHM modes, and `integrity_check=ok`, and tolerate no unhandled busy error. Build the standalone executable, run it with Bun and Node removed from `PATH`, and prove add/list/export persist across separate invocations.
 
@@ -941,7 +941,7 @@ Run: `bun test test/acceptance/concurrent-first-use.test.ts test/acceptance/comp
 
 Expected: both acceptance suites pass.
 
-- [ ] **Step 3: Write setup and repository black-box tests**
+- [x] **Step 3: Write setup and repository black-box tests**
 
 Assert setup preview leaves the entire fixture tree unchanged and creates no application directory; apply/reapply/undo is byte-safe; symlinks and drift fail without mutation. Exercise repositories, subdirectories, linked worktrees, separate clones, credential-bearing remotes, and non-Git directories through the CLI and verify filtering/export.
 
@@ -949,11 +949,11 @@ Run: `bun test test/acceptance/setup-safety.test.ts test/acceptance/repository-v
 
 Expected: both suites pass.
 
-- [ ] **Step 4: Write the user README**
+- [x] **Step 4: Write the user README**
 
 Document the purpose and papercut definition, prerequisites, `bun install`, development commands, standalone build, `./dist/papercuts` smoke test, optional `bun link`, every command with examples, JSON mode, central data location, privacy/redaction limits, setup preview/apply/undo, and deferred transcript review. Include the dogfood zsh example: assigning to lowercase `path` changes zsh's command-search path and can cause later commands to appear missing.
 
-- [ ] **Step 5: Run the full release gate**
+- [x] **Step 5: Run the full release gate**
 
 Run:
 
@@ -967,7 +967,7 @@ git diff --check
 
 Expected: typecheck, all tests, compiled build, standalone version smoke test, and whitespace check exit 0 with clean output.
 
-- [ ] **Step 6: Commit Task 7**
+- [x] **Step 6: Commit Task 7**
 
 Commit: `test: verify papercuts end to end`
 
