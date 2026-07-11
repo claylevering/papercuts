@@ -37,16 +37,39 @@ type PapercutsExitCode =
 
 export class PapercutsError extends Error {
   override readonly name = "PapercutsError";
-  readonly code: PapercutsErrorCode;
-  readonly exitCode: PapercutsExitCode;
-  readonly retryable: boolean;
+  declare readonly code: PapercutsErrorCode;
+  declare readonly exitCode: PapercutsExitCode;
+  declare readonly retryable: boolean;
 
   constructor(code: PapercutsErrorCode) {
     const definition = ERROR_DEFINITIONS[code];
     super(definition.message);
-    this.code = code;
-    this.exitCode = definition.exitCode;
-    this.retryable = definition.retryable;
+    Object.defineProperties(this, {
+      message: {
+        configurable: false,
+        enumerable: false,
+        value: definition.message,
+        writable: false,
+      },
+      code: {
+        configurable: false,
+        enumerable: true,
+        value: code,
+        writable: false,
+      },
+      exitCode: {
+        configurable: false,
+        enumerable: true,
+        value: definition.exitCode,
+        writable: false,
+      },
+      retryable: {
+        configurable: false,
+        enumerable: true,
+        value: definition.retryable,
+        writable: false,
+      },
+    });
   }
 
   toJSON(): {
@@ -55,10 +78,12 @@ export class PapercutsError extends Error {
     message: string;
     retryable: boolean;
   } {
+    const definition = ERROR_DEFINITIONS[this.code];
+
     return {
       code: this.code,
       exitCode: this.exitCode,
-      message: this.message,
+      message: definition.message,
       retryable: this.retryable,
     };
   }

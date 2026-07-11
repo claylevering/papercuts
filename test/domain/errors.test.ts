@@ -49,6 +49,51 @@ describe("PapercutsError", () => {
     expect(JSON.parse(JSON.stringify(error))).toEqual(error.toJSON());
   });
 
+  test("runtime assignment cannot replace the serialized fixed message", () => {
+    const error = new PapercutsError("internal_error");
+    const fixedMessage = error.toJSON().message;
+
+    expect(Reflect.set(error, "message", "runtime raw diagnostic")).toBe(false);
+    expect(error.message).toBe(fixedMessage);
+    expect(error.toJSON().message).toBe(fixedMessage);
+  });
+
+  test("runtime redefinition cannot replace the serialized fixed message", () => {
+    const error = new PapercutsError("internal_error");
+    const fixedMessage = error.toJSON().message;
+
+    expect(() =>
+      Object.defineProperty(error, "message", {
+        value: "runtime raw diagnostic",
+      }),
+    ).toThrow(TypeError);
+    expect(error.message).toBe(fixedMessage);
+    expect(error.toJSON().message).toBe(fixedMessage);
+  });
+
+  for (const property of [
+    "message",
+    "code",
+    "exitCode",
+    "retryable",
+  ] as const) {
+    test(`defines ${property} as an immutable own property`, () => {
+      const error = new PapercutsError("internal_error");
+      const descriptor = Object.getOwnPropertyDescriptor(error, property);
+
+      expect(descriptor).toBeDefined();
+      expect(descriptor?.writable).toBe(false);
+      expect(descriptor?.configurable).toBe(false);
+    });
+  }
+
+  test("preserves the Error name and stack", () => {
+    const error = new PapercutsError("internal_error");
+
+    expect(error.name).toBe("PapercutsError");
+    expect(error.stack).toContain("PapercutsError");
+  });
+
   test("rejects every caller-supplied message shape at compile time", () => {
     if (false) {
       const screened = redact("Caller detail.").text;
