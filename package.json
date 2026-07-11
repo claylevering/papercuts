@@ -1,0 +1,22 @@
+{
+  "name": "papercuts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "papercuts": "src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/papercuts src/index.ts",
+    "check": "bun run typecheck && bun test && bun run build"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^7.0.2"
+  }
+}

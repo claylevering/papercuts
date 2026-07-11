@@ -1,0 +1,188 @@
+import { describe, expect, test } from "bun:test";
+
+import * as redactorModule from "../../src/security/redactor";
+import {
+  REDACTION_RULESET_VERSION,
+  normalizeScreenedTag,
+  redact,
+} from "../../src/security/redactor";
+import type { ScreenedText } from "../../src/domain/types";
+
+describe("redact", () => {
+  for (const [raw, marker] of [
+    [`Authorization: Bearer ${"A".repeat(32)}`, "[REDACTED:AUTHORIZATION]"],
+    [`Cookie: session=${"B".repeat(32)}`, "[REDACTED:COOKIE]"],
+    [
+      `https://user:${"C".repeat(24)}@example.test/repo`,
+      "[REDACTED:URL_CREDENTIAL]",
+    ],
+    [`API_TOKEN=${"D".repeat(32)}`, "[REDACTED:SECRET]"],
+    [`ghp_${"E".repeat(24)}`, "[REDACTED:CREDENTIAL]"],
+  ] as const) {
+    test(`redacts ${marker}`, () => {
+      const result = redact(raw);
+
+      expect(String(result.text)).toBe(marker);
+      expect(result.text).not.toContain(raw);
+      expect(result.replacementCount).toBe(1);
+    });
+  }
+
+  test("fully redacts a double-quoted secret containing an escaped quote", () => {
+    const raw = `API_TOKEN="${"F".repeat(24)}\\"${"G".repeat(24)}"`;
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("fully redacts a single-quoted secret containing an escaped quote", () => {
+    const raw = `API_TOKEN='${"H".repeat(24)}\\'${"I".repeat(24)}'`;
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts adjacent quoted and unquoted shell value fragments", () => {
+    const raw = 'API_TOKEN="quoted-secret"raw-secret-suffix';
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts a backslash-newline shell continuation", () => {
+    const raw = "API_TOKEN=continued-part\\" + "\n" + "remaining-part";
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts a literal newline inside a quoted value and its suffix", () => {
+    const raw = [
+      'API_TOKEN="quoted first line',
+      'quoted second line"raw-suffix',
+    ].join("\n");
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("stops an unquoted value at an unescaped newline", () => {
+    const raw = ["API_TOKEN=single-line", "ordinary next line"].join("\n");
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe(
+      "[REDACTED:SECRET]\nordinary next line",
+    );
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts a private-key block with a class-only marker", () => {
+    const raw = [
+      "-----BEGIN PRIVATE KEY-----",
+      "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=",
+      "-----END PRIVATE KEY-----",
+    ].join("\n");
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:PRIVATE_KEY]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  for (const [name, raw] of [
+    ["GitHub", "ghp_" + "A".repeat(24)],
+    ["OpenAI-style", "sk-" + "B".repeat(24)],
+    ["Slack", "xoxb-" + "C".repeat(16)],
+  ] as const) {
+    test(`redacts a recognized ${name} credential prefix`, () => {
+      const result = redact(raw);
+
+      expect(String(result.text)).toBe("[REDACTED:CREDENTIAL]");
+      expect(result.replacementCount).toBe(1);
+    });
+  }
+
+  test("uses only typed class markers for replacements", () => {
+    const raw = `before API_TOKEN=${"D".repeat(32)}`;
+
+    expect(String(redact(raw).text)).toBe("before [REDACTED:SECRET]");
+  });
+
+  for (const [name, raw] of [
+    ["short credential lookalikes", "ghp_short sk-short xoxb-short"],
+    ["ordinary prose", "Please keep this note concise and useful."],
+    ["filesystem paths", "/Users/example/project/src/index.ts"],
+    ["commit hashes", "0123456789abcdef0123456789abcdef01234567"],
+    ["non-secret key names", "MONKEY=banana KEYBOARD_LAYOUT=dvorak"],
+  ] as const) {
+    test(`preserves ${name}`, () => {
+      const result = redact(raw);
+
+      expect(String(result.text)).toBe(raw);
+      expect(result.replacementCount).toBe(0);
+    });
+  }
+
+  test("is idempotent", () => {
+    const raw = [
+      `Authorization: Bearer ${"A".repeat(32)}`,
+      `API_TOKEN=${"B".repeat(32)}`,
+    ].join("\n");
+
+    const first = redact(raw);
+    const second = redact(first.text);
+
+    expect(second.text).toBe(first.text);
+    expect(second.replacementCount).toBe(0);
+    expect(second.rulesetVersion).toBe(REDACTION_RULESET_VERSION);
+  });
+
+  test("completes a long credential near-match promptly", () => {
+    const raw = "ghp_" + "A".repeat(19) + "!".repeat(100_000);
+    const startedAt = performance.now();
+
+    const result = redact(raw);
+
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(String(result.text)).toBe(raw);
+    expect(result.replacementCount).toBe(0);
+  });
+});
+
+describe("normalizeScreenedTag", () => {
+  test("trims and lowercases an already-screened tag", () => {
+    const screened = redact("  MIXED Case Tag  ").text;
+
+    const normalized: ScreenedText = normalizeScreenedTag(screened);
+
+    expect(String(normalized)).toBe("mixed case tag");
+  });
+
+  test("exposes no callback-based screened-text transformer", () => {
+    if (false) {
+      const screened = redact("  SAFE TAG  ").text;
+
+      // @ts-expect-error mapScreenedText is intentionally not exported.
+      redactorModule.mapScreenedText;
+
+      // @ts-expect-error normalizeScreenedTag requires screened text.
+      normalizeScreenedTag("  RAW TAG  ");
+
+      // @ts-expect-error normalizeScreenedTag accepts no callback.
+      normalizeScreenedTag(screened, (value: string) => value);
+    }
+
+    expect(true).toBe(true);
+  });
+});
