@@ -142,9 +142,6 @@ function findSecretLogicalLineEnd(raw: string, valueStart: number): number {
   return index;
 }
 
-export function mapScreenedText(
-  text: ScreenedText,
-  transform: (text: string) => string,
-): ScreenedText {
-  return transform(text) as ScreenedText;
+export function normalizeScreenedTag(text: ScreenedText): ScreenedText {
+  return text.trim().toLowerCase() as ScreenedText;
 }

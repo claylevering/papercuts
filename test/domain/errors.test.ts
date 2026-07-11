@@ -1,50 +1,71 @@
 import { describe, expect, test } from "bun:test";
 
-import * as errorModule from "../../src/domain/errors";
-import { PapercutsError } from "../../src/domain/errors";
+import {
+  PapercutsError,
+  type PapercutsErrorCode,
+} from "../../src/domain/errors";
 import { redact } from "../../src/security/redactor";
 
-// @ts-expect-error SafeMessage is intentionally not part of the public API.
-type RemovedSafeMessage = import("../../src/domain/errors").SafeMessage;
+const EXPECTED_ERRORS = [
+  ["internal_error", 1, false, "An internal error occurred."],
+  ["invalid_input", 2, false, "Invalid input."],
+  ["not_found", 3, false, "The requested item was not found."],
+  ["setup_conflict", 4, false, "Managed setup content has changed."],
+  ["store_busy", 5, true, "The papercuts store is busy; try again."],
+  ["safety_failure", 6, false, "The operation failed a safety check."],
+] as const satisfies readonly (readonly [
+  PapercutsErrorCode,
+  number,
+  boolean,
+  string,
+])[];
 
 describe("PapercutsError", () => {
-  test("accepts a screened fixed message and omits cause from JSON", () => {
-    const message = redact("A fixed failure occurred.").text;
-    const error = new PapercutsError({
-      code: "fixed_failure",
-      exitCode: 1,
-      message,
-      retryable: false,
+  for (const [code, exitCode, retryable, message] of EXPECTED_ERRORS) {
+    test(`derives the ${code} contract from its code`, () => {
+      const error = new PapercutsError(code);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.code).toBe(code);
+      expect(error.exitCode).toBe(exitCode);
+      expect(error.retryable).toBe(retryable);
+      expect(error.message).toBe(message);
+      expect(error.toJSON()).toEqual({
+        code,
+        exitCode,
+        message,
+        retryable,
+      });
     });
+  }
+
+  test("serializes only the fixed code-derived fields", () => {
+    const error = new PapercutsError("internal_error");
     Object.defineProperty(error, "cause", {
       enumerable: true,
       value: "internal diagnostic",
     });
 
-    expect(String(error.message)).toBe("A fixed failure occurred.");
-    expect(error.toJSON()).toEqual({
-      code: "fixed_failure",
-      exitCode: 1,
-      message: "A fixed failure occurred.",
-      retryable: false,
-    });
     expect(JSON.parse(JSON.stringify(error))).toEqual(error.toJSON());
   });
 
-  test("exposes only a screened compile-time message boundary", () => {
+  test("rejects every caller-supplied message shape at compile time", () => {
     if (false) {
-      const runtimeMessage = "runtime detail";
+      const screened = redact("Caller detail.").text;
 
+      // @ts-expect-error PapercutsError accepts no second argument.
+      new PapercutsError("internal_error", screened);
+
+      // @ts-expect-error PapercutsError accepts a code, not a message object.
       new PapercutsError({
-        code: "unsafe_failure",
+        code: "internal_error",
         exitCode: 1,
-        // @ts-expect-error PapercutsError rejects unbranded runtime strings.
-        message: runtimeMessage,
+        message: screened,
         retryable: false,
       });
 
-      // @ts-expect-error safeMessage is intentionally not exported.
-      errorModule.safeMessage;
+      // @ts-expect-error PapercutsErrorCode is a closed registry.
+      new PapercutsError("custom_error");
     }
 
     expect(true).toBe(true);

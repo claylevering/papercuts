@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
+import * as redactorModule from "../../src/security/redactor";
 import {
   REDACTION_RULESET_VERSION,
-  mapScreenedText,
+  normalizeScreenedTag,
   redact,
 } from "../../src/security/redactor";
+import type { ScreenedText } from "../../src/domain/types";
 
 describe("redact", () => {
   for (const [raw, marker] of [
@@ -158,12 +160,29 @@ describe("redact", () => {
   });
 });
 
-describe("mapScreenedText", () => {
-  test("transforms screened text while preserving its screened value", () => {
-    const screened = redact("  SAFE TAG  ").text;
+describe("normalizeScreenedTag", () => {
+  test("trims and lowercases an already-screened tag", () => {
+    const screened = redact("  MIXED Case Tag  ").text;
 
-    const mapped = mapScreenedText(screened, (text) => text.trim().toLowerCase());
+    const normalized: ScreenedText = normalizeScreenedTag(screened);
 
-    expect(String(mapped)).toBe("safe tag");
+    expect(String(normalized)).toBe("mixed case tag");
+  });
+
+  test("exposes no callback-based screened-text transformer", () => {
+    if (false) {
+      const screened = redact("  SAFE TAG  ").text;
+
+      // @ts-expect-error mapScreenedText is intentionally not exported.
+      redactorModule.mapScreenedText;
+
+      // @ts-expect-error normalizeScreenedTag requires screened text.
+      normalizeScreenedTag("  RAW TAG  ");
+
+      // @ts-expect-error normalizeScreenedTag accepts no callback.
+      normalizeScreenedTag(screened, (value: string) => value);
+    }
+
+    expect(true).toBe(true);
   });
 });
