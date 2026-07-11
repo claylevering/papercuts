@@ -147,7 +147,7 @@ export interface PapercutStore {
 }
 ```
 
-`src/domain/errors.ts` must export `PapercutsError` with `code`, `exitCode`, `retryable`, and sanitized `message` fields. Expected exit codes are 1 through 6 as specified in the design.
+`src/domain/errors.ts` must export code-driven `PapercutsError`. Its constructor accepts only `internal_error`, `invalid_input`, `not_found`, `setup_conflict`, `store_busy`, or `safety_failure`; a frozen internal registry derives the fixed message, exit code 1–6, and retryability. Callers cannot supply a message, details, raw payload, or cause.
 
 ---
 
@@ -165,12 +165,13 @@ export interface PapercutStore {
 - Create: `src/platform/process.ts`
 - Create: `src/platform/private-files.ts`
 - Create: `test/security/redactor.test.ts`
+- Create: `test/domain/errors.test.ts`
 - Create: `test/platform/hash.test.ts`
 - Create: `test/platform/paths.test.ts`
 - Create: `test/platform/private-files.test.ts`
 
 **Interfaces:**
-- Produces: all shared interfaces listed above, `PapercutsError`, `REDACTION_RULESET_VERSION`, `redact(raw: string): RedactionResult`, `mapScreenedText(text, transform)`, `sha256Hex`, `resolvePapercutsPaths`, `ProcessRunner`, `bunProcessRunner`, and private-file helpers consumed by Tasks 2–4.
+- Produces: all shared interfaces listed above, code-driven `PapercutsError`, `REDACTION_RULESET_VERSION`, `redact(raw: string): RedactionResult`, `normalizeScreenedTag(text: ScreenedText): ScreenedText`, `sha256Hex`, `resolvePapercutsPaths`, `ProcessRunner`, `bunProcessRunner`, and private-file helpers consumed by Tasks 2–4.
 - Consumes: only Bun/Node-compatible built-ins.
 
 - [ ] **Step 1: Establish the Bun project and verification scripts**
@@ -236,7 +237,7 @@ export const REDACTION_RULESET_VERSION = "1";
 export function redact(raw: string): RedactionResult;
 ```
 
-Use small independent regular expressions without nested ambiguous repetition. Replace matches with `[REDACTED:CREDENTIAL]`, `[REDACTED:AUTHORIZATION]`, `[REDACTED:COOKIE]`, `[REDACTED:PRIVATE_KEY]`, `[REDACTED:URL_CREDENTIAL]`, or `[REDACTED:SECRET]`. Count replacements and brand the returned text as `ScreenedText`. Never retain the matched value. `mapScreenedText` may transform only an already-screened value and must preserve the brand; Task 3 uses it for trim/lowercase tag normalization.
+Use small independent regular expressions without nested ambiguous repetition. Replace matches with `[REDACTED:CREDENTIAL]`, `[REDACTED:AUTHORIZATION]`, `[REDACTED:COOKIE]`, `[REDACTED:PRIVATE_KEY]`, `[REDACTED:URL_CREDENTIAL]`, or `[REDACTED:SECRET]`. Secret-named assignments use a bounded linear logical-line scanner that consumes quoted/unquoted concatenation and continuations. Count replacements and brand the returned text as `ScreenedText`. Never retain the matched value. Export only `normalizeScreenedTag`, which performs trim plus lowercase on an already-screened tag and accepts no callback or arbitrary replacement text.
 
 The credential-prefix matcher must, at minimum, recognize these conservative forms without matching their short lookalikes:
 
@@ -252,13 +253,13 @@ Run: `bun test test/security/redactor.test.ts`
 
 Expected: all redactor tests pass with clean output.
 
-- [ ] **Step 4: Add domain and sanitized error contracts**
+- [ ] **Step 4: Write failing code-driven error tests, then add the domain contracts**
 
-Create the shared interfaces verbatim. `PapercutsError` must not accept a raw payload in its constructor or expose a `cause` through JSON formatting. Unit behavior is exercised by later CLI tests; typecheck the contracts now.
+Write `test/domain/errors.test.ts` first. Assert all six code-to-message/exit/retry mappings and use `@ts-expect-error` to prove a second/message argument is rejected. Observe RED because the class is missing. Then create the shared interfaces verbatim and implement the closed frozen registry. `toJSON` emits only code, fixed message, exit code, and retryability.
 
-Run: `bun run typecheck`
+Run: `bun test test/domain/errors.test.ts && bun run typecheck`
 
-Expected: exit 0 with no TypeScript errors.
+Expected: all error tests pass and typecheck exits 0.
 
 - [ ] **Step 5: Write failing platform-boundary tests**
 
@@ -500,7 +501,7 @@ Expected: FAIL because `service.ts` does not exist.
 
 - [ ] **Step 6: Implement capture orchestration**
 
-Validate bounds before regular expressions. Allow at most 16 tags; model max 256 bytes; category and each tag max 64 bytes. Redact body and every optional string separately before normalization. Use Task 1 `mapScreenedText` to trim and lowercase already-screened tags without dropping the brand, then remove duplicates and stable-sort them. Sum observation replacements with `ResolvedRepoContext.redactionCount`, generate a UUIDv4 and timestamp through injected functions, append once, and return only a `CaptureReceipt` plus sanitized warnings.
+Validate bounds before regular expressions. Allow at most 16 tags; model max 256 bytes; category and each tag max 64 bytes. Redact body and every optional string separately before normalization. Use Task 1 `normalizeScreenedTag` to trim and lowercase already-screened tags, then remove duplicates and stable-sort them. Sum observation replacements with `ResolvedRepoContext.redactionCount`, generate a UUIDv4 and timestamp through injected functions, append once, and return only a `CaptureReceipt` plus sanitized warnings.
 
 Run: `bun test test/capture test/repository`
 

@@ -129,6 +129,8 @@ Stable exit codes:
 - `5`: temporary SQLite lock contention; retryable
 - `6`: safety or redaction failure; nothing persisted
 
+`PapercutsError` is code-driven. Its constructor accepts only one of the six fixed error codes (`internal_error`, `invalid_input`, `not_found`, `setup_conflict`, `store_busy`, `safety_failure`) and derives the corresponding fixed message, exit code, and retryability from an internal frozen registry. Callers cannot provide an error message or diagnostic payload.
+
 Command data shapes are fixed in v1:
 
 - `add`: `{id, createdAt, source, repository: {name}|null, redactionCount}` where `createdAt` is RFC 3339 UTC; never the body, root, repository fingerprint, model, category, or tags
