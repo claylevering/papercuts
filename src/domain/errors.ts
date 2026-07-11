@@ -34,6 +34,12 @@ const ERROR_DEFINITIONS = Object.freeze({
 export type PapercutsErrorCode = keyof typeof ERROR_DEFINITIONS;
 type PapercutsExitCode =
   (typeof ERROR_DEFINITIONS)[PapercutsErrorCode]["exitCode"];
+type PapercutsErrorJson = {
+  code: PapercutsErrorCode;
+  exitCode: PapercutsExitCode;
+  message: string;
+  retryable: boolean;
+};
 
 export class PapercutsError extends Error {
   override readonly name = "PapercutsError";
@@ -69,15 +75,21 @@ export class PapercutsError extends Error {
         value: definition.retryable,
         writable: false,
       },
+      toJSON: {
+        configurable: false,
+        enumerable: false,
+        value: (): PapercutsErrorJson => ({
+          code,
+          exitCode: definition.exitCode,
+          message: definition.message,
+          retryable: definition.retryable,
+        }),
+        writable: false,
+      },
     });
   }
 
-  toJSON(): {
-    code: PapercutsErrorCode;
-    exitCode: PapercutsExitCode;
-    message: string;
-    retryable: boolean;
-  } {
+  toJSON(): PapercutsErrorJson {
     const definition = ERROR_DEFINITIONS[this.code];
 
     return {

@@ -71,6 +71,43 @@ describe("PapercutsError", () => {
     expect(error.toJSON().message).toBe(fixedMessage);
   });
 
+  test("runtime assignment cannot shadow the JSON serializer", () => {
+    const error = new PapercutsError("internal_error");
+
+    expect(
+      Reflect.set(error, "toJSON", () => "runtime raw diagnostic"),
+    ).toBe(false);
+  });
+
+  test("runtime redefinition cannot shadow the JSON serializer", () => {
+    const error = new PapercutsError("internal_error");
+
+    expect(() =>
+      Object.defineProperty(error, "toJSON", {
+        value: () => "runtime raw diagnostic",
+      }),
+    ).toThrow(TypeError);
+  });
+
+  test("defines the JSON serializer as an immutable non-enumerable own property", () => {
+    const error = new PapercutsError("internal_error");
+    const descriptor = Object.getOwnPropertyDescriptor(error, "toJSON");
+
+    expect(descriptor).toBeDefined();
+    expect(typeof descriptor?.value).toBe("function");
+    expect(descriptor?.writable).toBe(false);
+    expect(descriptor?.configurable).toBe(false);
+    expect(descriptor?.enumerable).toBe(false);
+  });
+
+  test("JSON serialization stays closed after a raw serializer assignment attempt", () => {
+    const error = new PapercutsError("internal_error");
+    const expected = error.toJSON();
+    Reflect.set(error, "toJSON", () => "runtime raw diagnostic");
+
+    expect(JSON.parse(JSON.stringify(error))).toEqual(expected);
+  });
+
   for (const property of [
     "message",
     "code",
