@@ -19,6 +19,13 @@ const MAX_MODEL_BYTES = 256;
 const MAX_CATEGORY_BYTES = 64;
 const MAX_TAG_BYTES = 64;
 const MAX_TAGS = 16;
+const MAX_GENERATED_ID_BYTES = 128;
+const MAX_CLIENT_VERSION_BYTES = 64;
+const MAX_DATE_MS = 8_640_000_000_000_000;
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SEMANTIC_VERSION_PATTERN =
+  /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const CAPTURE_SOURCES = new Set<CaptureSource>([
   "manual",
   "codex",
@@ -58,6 +65,7 @@ export function createCaptureService(
   return {
     async capture(input: CaptureInput) {
       validateInput(input);
+      const clientVersion = validateClientVersion(dependencies.clientVersion);
 
       const body = screen(input.body);
       const model = screenOptional(input.model);
@@ -88,8 +96,8 @@ export function createCaptureService(
       const redactionCount =
         observationRedactionCount +
         (resolvedRepository?.redactionCount ?? 0);
-      const id = dependencies.randomUUID();
-      const createdAtMs = dependencies.now();
+      const id = generateUuid(dependencies.randomUUID);
+      const createdAtMs = generateTimestamp(dependencies.now);
       const record: Papercut = Object.freeze({
         id,
         createdAtMs,
@@ -98,7 +106,7 @@ export function createCaptureService(
         model: model?.text ?? null,
         category: category?.text ?? null,
         tags: screenedTags.tags,
-        clientVersion: dependencies.clientVersion,
+        clientVersion,
         repo,
         redactionCount,
         redactionVersion: REDACTION_RULESET_VERSION,
@@ -192,6 +200,82 @@ function isWellFormed(value: string): boolean {
   }
 
   return true;
+}
+
+function validateClientVersion(raw: unknown): ScreenedText {
+  if (
+    typeof raw !== "string" ||
+    raw.length === 0 ||
+    raw.includes("\0") ||
+    !isWellFormed(raw) ||
+    utf8ByteLength(raw) > MAX_CLIENT_VERSION_BYTES
+  ) {
+    throw new PapercutsError("internal_error");
+  }
+
+  const screened = screen(raw);
+
+  if (screened.replacementCount > 0) {
+    throw new PapercutsError("safety_failure");
+  }
+
+  if (!SEMANTIC_VERSION_PATTERN.test(screened.text)) {
+    throw new PapercutsError("internal_error");
+  }
+
+  return screened.text;
+}
+
+function generateUuid(randomUUID: () => string): string {
+  let raw: unknown;
+
+  try {
+    raw = randomUUID();
+  } catch {
+    throw new PapercutsError("internal_error");
+  }
+
+  if (
+    typeof raw !== "string" ||
+    raw.length === 0 ||
+    raw.includes("\0") ||
+    !isWellFormed(raw) ||
+    utf8ByteLength(raw) > MAX_GENERATED_ID_BYTES
+  ) {
+    throw new PapercutsError("safety_failure");
+  }
+
+  const screened = screen(raw);
+
+  if (
+    screened.replacementCount > 0 ||
+    !UUID_V4_PATTERN.test(screened.text)
+  ) {
+    throw new PapercutsError("safety_failure");
+  }
+
+  return screened.text.toLowerCase();
+}
+
+function generateTimestamp(now: () => number): number {
+  let timestamp: unknown;
+
+  try {
+    timestamp = now();
+  } catch {
+    throw new PapercutsError("internal_error");
+  }
+
+  if (
+    typeof timestamp !== "number" ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp <= 0 ||
+    timestamp > MAX_DATE_MS
+  ) {
+    throw new PapercutsError("internal_error");
+  }
+
+  return timestamp;
 }
 
 function screen(raw: string): RedactionResult {

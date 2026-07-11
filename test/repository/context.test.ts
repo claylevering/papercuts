@@ -285,6 +285,151 @@ describe("resolveRepoContext", () => {
     expect(JSON.stringify(context)).not.toContain(encodedCredential);
   });
 
+  test("fully decodes URL and SCP screening preimages before remote identity", async () => {
+    const equalsValue = "E".repeat(32);
+    const colonValue = "C".repeat(32);
+    const doubleAssignmentValue = "D".repeat(32);
+    const doubleCredentialValue = "G".repeat(24);
+    const scpValue = "S".repeat(32);
+    const cases = [
+      {
+        remote: `https://example.com/Owner/API_TOKEN%3D${equalsValue}.git`,
+        rawCanary: `API_TOKEN=${equalsValue}`,
+        encodedCanary: `API_TOKEN%3D${equalsValue}`,
+        displayName: "[REDACTED:SECRET]",
+      },
+      {
+        remote: `https://example.com/Owner/API_TOKEN%3A%20${colonValue}.git`,
+        rawCanary: `API_TOKEN: ${colonValue}`,
+        encodedCanary: `API_TOKEN%3A%20${colonValue}`,
+        displayName: "[REDACTED:SECRET]",
+      },
+      {
+        remote: `https://example.com/Owner/API_TOKEN%253D${doubleAssignmentValue}.git`,
+        rawCanary: `API_TOKEN=${doubleAssignmentValue}`,
+        encodedCanary: `API_TOKEN%253D${doubleAssignmentValue}`,
+        displayName: "[REDACTED:SECRET]",
+      },
+      {
+        remote: `https://example.com/Owner/ghp%255F${doubleCredentialValue}.git`,
+        rawCanary: `ghp_${doubleCredentialValue}`,
+        encodedCanary: `ghp%255F${doubleCredentialValue}`,
+        displayName: "[REDACTED:CREDENTIAL]",
+      },
+      {
+        remote: `https://example.com/Owner%2FAPI_TOKEN%3D${equalsValue}.git`,
+        rawCanary: `API_TOKEN=${equalsValue}`,
+        encodedCanary: `Owner%2FAPI_TOKEN%3D${equalsValue}`,
+        displayName: "[REDACTED:SECRET]",
+      },
+      {
+        remote: `git@example.com:Owner/API_TOKEN%3D${scpValue}.git`,
+        rawCanary: `API_TOKEN=${scpValue}`,
+        encodedCanary: `API_TOKEN%3D${scpValue}`,
+        displayName: "[REDACTED:SECRET]",
+      },
+      {
+        remote: `git@example.com:Owner/ghp%255F${doubleCredentialValue}.git`,
+        rawCanary: `ghp_${doubleCredentialValue}`,
+        encodedCanary: `ghp%255F${doubleCredentialValue}`,
+        displayName: "[REDACTED:CREDENTIAL]",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const { repo } = await createRepository({ commit: true });
+      await git(repo, ["remote", "add", "origin", testCase.remote]);
+
+      const context = await resolveRepoContext(repo);
+      const serialized = JSON.stringify(context);
+
+      expect(context?.context.keyKind).toBe("local");
+      expect(context?.context.key).toBe(await expectedLocalKey(repo));
+      expect(String(context?.context.displayName)).toBe(testCase.displayName);
+      expect(serialized).not.toContain(testCase.rawCanary);
+      expect(serialized).not.toContain(testCase.encodedCanary);
+    }
+  });
+
+  test("uses local identity when decoded remote structure is ambiguous", async () => {
+    const { repo } = await createRepository({ commit: true });
+    await git(repo, [
+      "remote",
+      "add",
+      "origin",
+      "https://example.com/Owner%2FNested/Repo.git",
+    ]);
+
+    const context = await resolveRepoContext(repo);
+
+    expect(context?.context.keyKind).toBe("local");
+    expect(context?.context.key).toBe(await expectedLocalKey(repo));
+    expect(String(context?.context.displayName)).toBe(basename(repo));
+    expect(JSON.stringify(context)).not.toContain("Owner%2FNested");
+  });
+
+  test("uses local identity when the screening decode is malformed", async () => {
+    const credentialValue = "M".repeat(24);
+    const encodedCanary = `%ZZghp%5F${credentialValue}`;
+    const { repo } = await createRepository({ commit: true });
+    await git(repo, [
+      "remote",
+      "add",
+      "origin",
+      `git@example.com:Owner/${encodedCanary}.git`,
+    ]);
+
+    const context = await resolveRepoContext(repo);
+
+    expect(context?.context.keyKind).toBe("local");
+    expect(context?.context.key).toBe(await expectedLocalKey(repo));
+    expect(String(context?.context.displayName)).toBe(basename(repo));
+    expect(JSON.stringify(context)).not.toContain(`ghp_${credentialValue}`);
+    expect(JSON.stringify(context)).not.toContain(encodedCanary);
+  });
+
+  test("uses local identity when nested decoding exceeds its depth bound", async () => {
+    const credentialValue = "X".repeat(24);
+    const encodedUnderscore = encodePercentLayers("%5F", 12);
+    const encodedCanary = `ghp${encodedUnderscore}${credentialValue}`;
+    const { repo } = await createRepository({ commit: true });
+    await git(repo, [
+      "remote",
+      "add",
+      "origin",
+      `https://example.com/Owner/${encodedCanary}.git`,
+    ]);
+
+    const context = await resolveRepoContext(repo);
+
+    expect(context?.context.keyKind).toBe("local");
+    expect(context?.context.key).toBe(await expectedLocalKey(repo));
+    expect(String(context?.context.displayName)).toBe(basename(repo));
+    expect(JSON.stringify(context)).not.toContain(`ghp_${credentialValue}`);
+    expect(JSON.stringify(context)).not.toContain(encodedCanary);
+  });
+
+  test("uses local identity when the screening preimage exceeds its byte bound", async () => {
+    const assignmentValue = "L".repeat(32);
+    const encodedCanary = `API_TOKEN%3D${assignmentValue}`;
+    const oversizedPath = `${"p".repeat(65_536)}/${encodedCanary}`;
+    const { repo } = await createRepository({ commit: true });
+    await git(repo, [
+      "remote",
+      "add",
+      "origin",
+      `git@example.com:${oversizedPath}.git`,
+    ]);
+
+    const context = await resolveRepoContext(repo);
+
+    expect(context?.context.keyKind).toBe("local");
+    expect(context?.context.key).toBe(await expectedLocalKey(repo));
+    expect(String(context?.context.displayName)).toBe(basename(repo));
+    expect(JSON.stringify(context)).not.toContain(`API_TOKEN=${assignmentValue}`);
+    expect(JSON.stringify(context)).not.toContain(encodedCanary);
+  });
+
   test("sanitizes unexpected discovery failures without returning raw path canaries", async () => {
     const pathCredential = "ghp_" + "Z".repeat(24);
     const missingPath = join(
@@ -346,6 +491,16 @@ async function expectedLocalKey(repo: string): Promise<string> {
   ]);
   const metadata = await stat(await realpath(commonDirectory), { bigint: true });
   return sha256Hex(`local:${metadata.dev}:${metadata.ino}`);
+}
+
+function encodePercentLayers(value: string, layers: number): string {
+  let encoded = value;
+
+  for (let layer = 0; layer < layers; layer += 1) {
+    encoded = encoded.replaceAll("%", "%25");
+  }
+
+  return encoded;
 }
 
 async function gitStdout(cwd: string, args: readonly string[]): Promise<string> {

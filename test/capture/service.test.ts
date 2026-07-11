@@ -225,6 +225,137 @@ describe("createCaptureService", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  test.each([
+    "not-a-uuid",
+    "123e4567-e89b-12d3-a456-426614174000",
+    "123e4567-e89b-42d3-c456-426614174000",
+    `{${FIXED_ID}}`,
+    "ghp_" + "I".repeat(24),
+  ])("rejects an invalid generated UUID without appending", async (generatedId) => {
+    const harness = createHarness({ randomUUID: () => generatedId });
+
+    try {
+      await harness.service.capture(input());
+      throw new Error("expected generated UUID rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).code).toBe("safety_failure");
+      expect(String(error)).not.toContain(generatedId);
+      expect(JSON.stringify(error)).not.toContain(generatedId);
+    }
+    expect(harness.store.appendCalls).toBe(0);
+    expect(harness.store.records).toHaveLength(0);
+  });
+
+  test("accepts uppercase UUIDv4 syntax and persists its canonical lowercase form", async () => {
+    const harness = createHarness({
+      randomUUID: () => FIXED_ID.toUpperCase(),
+    });
+
+    const result = await harness.service.capture(input());
+
+    expect(harness.store.records[0]?.id).toBe(FIXED_ID);
+    expect(result.receipt.id).toBe(FIXED_ID);
+  });
+
+  test("sanitizes a generated UUID provider failure without appending", async () => {
+    const rawCredential = "ghp_" + "U".repeat(24);
+    const harness = createHarness({
+      randomUUID() {
+        throw new Error(`UUID provider failed: ${rawCredential}`);
+      },
+    });
+
+    try {
+      await harness.service.capture(input());
+      throw new Error("expected UUID provider failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).code).toBe("internal_error");
+      expect(String(error)).not.toContain(rawCredential);
+      expect(JSON.stringify(error)).not.toContain(rawCredential);
+    }
+    expect(harness.store.appendCalls).toBe(0);
+  });
+
+  test.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    8_640_000_000_000_001,
+  ])(
+    "rejects an invalid generated timestamp without appending",
+    async (timestamp) => {
+      const harness = createHarness({ now: () => timestamp });
+
+      await expect(harness.service.capture(input())).rejects.toMatchObject({
+        code: "internal_error",
+      });
+      expect(harness.store.appendCalls).toBe(0);
+      expect(harness.store.records).toHaveLength(0);
+    },
+  );
+
+  test("sanitizes a generated timestamp provider failure without appending", async () => {
+    const rawCredential = "ghp_" + "N".repeat(24);
+    const harness = createHarness({
+      now() {
+        throw new Error(`clock failed: ${rawCredential}`);
+      },
+    });
+
+    try {
+      await harness.service.capture(input());
+      throw new Error("expected timestamp provider failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).code).toBe("internal_error");
+      expect(String(error)).not.toContain(rawCredential);
+      expect(JSON.stringify(error)).not.toContain(rawCredential);
+    }
+    expect(harness.store.appendCalls).toBe(0);
+  });
+
+  test.each(["", "version-one", "1.2", "1.2.3.4", "v1.2.3"])(
+    "rejects an invalid client version without appending",
+    async (clientVersion) => {
+      const harness = createHarness({ clientVersion });
+
+      await expect(harness.service.capture(input())).rejects.toMatchObject({
+        code: "internal_error",
+      });
+      expect(harness.store.appendCalls).toBe(0);
+    },
+  );
+
+  test("rejects a secret-like semantic client version without exposing it", async () => {
+    const credential = "sk-" + "V".repeat(24);
+    const clientVersion = `0.1.0-${credential}`;
+    const harness = createHarness({ clientVersion });
+
+    try {
+      await harness.service.capture(input());
+      throw new Error("expected client version rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).code).toBe("safety_failure");
+      expect(String(error)).not.toContain(credential);
+      expect(JSON.stringify(error)).not.toContain(credential);
+    }
+    expect(harness.store.appendCalls).toBe(0);
+  });
+
+  test("accepts a bounded semantic client version", async () => {
+    const clientVersion = "1.2.3-alpha.1+build.5";
+    const harness = createHarness({ clientVersion });
+
+    await harness.service.capture(input());
+
+    expect(harness.store.records[0]?.clientVersion).toBe(clientVersion);
+  });
+
   test("captures an unscoped record when no repository exists", async () => {
     const harness = createHarness({ repository: null });
 
@@ -326,6 +457,9 @@ function resolvedRepository(overrides: {
 function createHarness(options: {
   repository?: ResolvedRepoContext | null;
   repositoryError?: Error;
+  randomUUID?: () => string;
+  now?: () => number;
+  clientVersion?: string;
 } = {}): {
   service: ReturnType<typeof createCaptureService>;
   store: FakeStore;
@@ -342,9 +476,9 @@ function createHarness(options: {
       }
       return options.repository === undefined ? null : options.repository;
     },
-    now: () => FIXED_NOW,
-    randomUUID: () => FIXED_ID,
-    clientVersion: "0.1.0-test",
+    now: options.now ?? (() => FIXED_NOW),
+    randomUUID: options.randomUUID ?? (() => FIXED_ID),
+    clientVersion: options.clientVersion ?? "0.1.0-test",
   };
 
   return {

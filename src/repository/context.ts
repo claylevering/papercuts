@@ -16,6 +16,9 @@ import {
 import { redact } from "../security/redactor";
 import { normalizeRemote } from "./remote";
 
+const MAX_REMOTE_SCREENING_BYTES = 65_536;
+const MAX_REMOTE_DECODE_ROUNDS = 8;
+
 export async function resolveRepoContext(
   cwd: string,
 ): Promise<ResolvedRepoContext | null> {
@@ -69,12 +72,26 @@ async function discoverRepoContext(
   let displayCandidate = basename(root);
   let redactionCount = 0;
 
-  if (normalizedRemote !== null) {
-    const screenedRemote = screen(normalizedRemote);
-    redactionCount += screenedRemote.replacementCount;
-    displayCandidate = basename(String(screenedRemote.text));
+  const remoteScreening =
+    normalizedRemote === null
+      ? null
+      : decodeRemoteForScreening(normalizedRemote);
 
-    if (screenedRemote.replacementCount === 0) {
+  if (remoteScreening !== null) {
+    const screenedRemote = screen(remoteScreening.text);
+    redactionCount += screenedRemote.replacementCount;
+
+    if (
+      !remoteScreening.ambiguous ||
+      screenedRemote.replacementCount > 0
+    ) {
+      displayCandidate = basename(String(screenedRemote.text));
+    }
+
+    if (
+      !remoteScreening.ambiguous &&
+      screenedRemote.replacementCount === 0
+    ) {
       key = sha256Hex(`remote:${screenedRemote.text}`);
       keyKind = "remote";
     }
@@ -178,6 +195,89 @@ function normalizeRelativePath(root: string, cwd: string): string {
   }
 
   return path.length === 0 ? "." : path.replaceAll("\\", "/");
+}
+
+function decodeRemoteForScreening(normalized: string): {
+  text: string;
+  ambiguous: boolean;
+} | null {
+  if (utf8ByteLength(normalized) > MAX_REMOTE_SCREENING_BYTES) {
+    return null;
+  }
+
+  let decoded = normalized;
+
+  for (let round = 0; round < MAX_REMOTE_DECODE_ROUNDS; round += 1) {
+    if (!decoded.includes("%")) {
+      return {
+        text: decoded,
+        ambiguous: isStructurallyAmbiguous(normalized, decoded),
+      };
+    }
+
+    if (/%(?![0-9A-Fa-f]{2})/.test(decoded)) {
+      return null;
+    }
+
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      return null;
+    }
+
+    if (utf8ByteLength(decoded) > MAX_REMOTE_SCREENING_BYTES) {
+      return null;
+    }
+  }
+
+  if (decoded.includes("%")) {
+    return null;
+  }
+
+  return {
+    text: decoded,
+    ambiguous: isStructurallyAmbiguous(normalized, decoded),
+  };
+}
+
+function isStructurallyAmbiguous(
+  normalized: string,
+  decoded: string,
+): boolean {
+  const normalizedSeparator = normalized.indexOf("/");
+  const decodedSeparator = decoded.indexOf("/");
+
+  if (
+    normalizedSeparator === -1 ||
+    decodedSeparator === -1 ||
+    normalized.slice(0, normalizedSeparator) !==
+      decoded.slice(0, decodedSeparator) ||
+    countCharacter(normalized, "/") !== countCharacter(decoded, "/") ||
+    /[?#\\\u0000-\u001f\u007f]/.test(decoded)
+  ) {
+    return true;
+  }
+
+  return decoded
+    .slice(decodedSeparator + 1)
+    .split("/")
+    .some((segment) => segment === "." || segment === "..");
+}
+
+function countCharacter(value: string, character: string): number {
+  let count = 0;
+
+  for (const current of value) {
+    if (current === character) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function screen(raw: string): RedactionResult {
