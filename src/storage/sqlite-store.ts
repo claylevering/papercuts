@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { PapercutsError } from "../domain/errors";
@@ -145,15 +145,17 @@ export function openSqliteStore(path: string): PapercutStore {
 
 function createStore(database: Database, path: string): PapercutStore {
   const insert = database.query<never, InsertParameters>(INSERT_PAPERCUT_SQL);
+  const appendRecord = database.transaction((record: Papercut): void => {
+    insert.run(toInsertParameters(record));
+    enforceDatabaseModes(path);
+  });
 
   return {
     append(record: Papercut): void {
       try {
-        insert.run(toInsertParameters(record));
+        appendRecord.immediate(record);
       } catch (error) {
         throwSanitizedStoreError(error);
-      } finally {
-        enforceDatabaseModes(path);
       }
     },
 
@@ -483,11 +485,25 @@ function requireString(value: unknown): string {
 function enforceDatabaseModes(path: string): void {
   try {
     for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
-      if (existsSync(candidate)) ensurePrivateFileSync(candidate);
+      try {
+        lstatSync(candidate);
+      } catch (error) {
+        if (isMissingPathError(error)) continue;
+        throw error;
+      }
+      ensurePrivateFileSync(candidate);
     }
   } catch {
     throw new PapercutsError("safety_failure");
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 function ensurePrivateDirectory(path: string): void {

@@ -7,11 +7,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
-  symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -334,34 +331,52 @@ describe("SQLite migrations and safety", () => {
     expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("EEXIST");
   });
 
-  test("sanitizes append-time permission correction failures", () => {
+  test("rolls back append when post-write permission enforcement cannot inspect existing files", () => {
     const store = openStore();
-    const heldDatabasePath = `${databasePath}.held`;
-    renameSync(databasePath, heldDatabasePath);
-    symlinkSync("/dev/null", databasePath);
+    const record = makePapercut({
+      id: "00000000-0000-4000-8000-000000000907",
+    });
+    const databaseFiles = [
+      databasePath,
+      `${databasePath}-wal`,
+      `${databasePath}-shm`,
+    ];
+    for (const path of databaseFiles) chmodSync(path, 0o666);
 
+    let error: unknown;
     try {
-      const error = captureError(() =>
-        store.append(
-          makePapercut({ id: "00000000-0000-4000-8000-000000000907" }),
-        )
-      );
+      chmodSync(directory, 0o000);
+      error = captureError(() => store.append(record));
+    } finally {
+      chmodSync(directory, 0o700);
+    }
 
-      expect(error).toBeInstanceOf(PapercutsError);
-      expect((error as PapercutsError).toJSON()).toEqual({
+    expect({
+      error:
+        error instanceof PapercutsError ? error.toJSON() : String(error),
+      ids: store.list({ order: "newest" }).map(({ id }) => id),
+      modes: databaseFiles.map(fileMode),
+    }).toEqual({
+      error: {
         code: "safety_failure",
         exitCode: 6,
         message: "The operation failed a safety check.",
         retryable: false,
-      });
-      expect(`${String(error)}${JSON.stringify(error)}`).not.toContain(
-        databasePath,
-      );
-      expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("EPERM");
-    } finally {
-      unlinkSync(databasePath);
-      renameSync(heldDatabasePath, databasePath);
-    }
+      },
+      ids: [],
+      modes: [0o666, 0o666, 0o666],
+    });
+    expect(`${String(error)}${JSON.stringify(error)}`).not.toContain(
+      databasePath,
+    );
+    expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("EACCES");
+
+    store.append(record);
+
+    expect(store.list({ order: "newest" }).map(({ id }) => id)).toEqual([
+      record.id,
+    ]);
+    expect(databaseFiles.map(fileMode)).toEqual([0o600, 0o600, 0o600]);
   });
 
   function openStore(): PapercutStore {
