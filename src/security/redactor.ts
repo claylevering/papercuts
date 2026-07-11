@@ -75,7 +75,7 @@ function redactSecretAssignments(raw: string): {
     }
 
     const valueStart = match.index + match[0].length;
-    const valueEnd = findSecretValueEnd(raw, valueStart);
+    const valueEnd = findSecretLogicalLineEnd(raw, valueStart);
 
     if (valueEnd === valueStart) {
       continue;
@@ -94,50 +94,12 @@ function redactSecretAssignments(raw: string): {
   return { text: parts.join(""), replacementCount };
 }
 
-function findSecretValueEnd(raw: string, valueStart: number): number {
-  const quote = raw[valueStart];
-
-  if (quote === '"' || quote === "'") {
-    return findQuotedSecretValueEnd(raw, valueStart, quote);
-  }
-
+function findSecretLogicalLineEnd(raw: string, valueStart: number): number {
   let index = valueStart;
+  let quote: '"' | "'" | null = null;
 
   while (index < raw.length) {
     const character = raw[index];
-
-    if (
-      character === undefined ||
-      character === "," ||
-      character === ";" ||
-      /\s/.test(character)
-    ) {
-      break;
-    }
-
-    index += 1;
-  }
-
-  return index;
-}
-
-function findQuotedSecretValueEnd(
-  raw: string,
-  valueStart: number,
-  quote: '"' | "'",
-): number {
-  let index = valueStart + 1;
-
-  while (index < raw.length) {
-    const character = raw[index];
-
-    if (character === quote) {
-      return index + 1;
-    }
-
-    if (character === "\r" || character === "\n") {
-      return index;
-    }
 
     if (character === "\\") {
       const escaped = raw[index + 1];
@@ -146,12 +108,32 @@ function findQuotedSecretValueEnd(
         return raw.length;
       }
 
-      if (escaped === "\r" || escaped === "\n") {
-        return index + 1;
+      if (escaped === "\r" && raw[index + 2] === "\n") {
+        index += 3;
+        continue;
       }
 
       index += 2;
       continue;
+    }
+
+    if (quote !== null) {
+      if (character === quote) {
+        quote = null;
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      index += 1;
+      continue;
+    }
+
+    if (character === "\r" || character === "\n") {
+      return index;
     }
 
     index += 1;

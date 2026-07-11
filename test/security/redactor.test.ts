@@ -44,6 +44,47 @@ describe("redact", () => {
     expect(result.replacementCount).toBe(1);
   });
 
+  test("redacts adjacent quoted and unquoted shell value fragments", () => {
+    const raw = 'API_TOKEN="quoted-secret"raw-secret-suffix';
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts a backslash-newline shell continuation", () => {
+    const raw = "API_TOKEN=continued-part\\" + "\n" + "remaining-part";
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("redacts a literal newline inside a quoted value and its suffix", () => {
+    const raw = [
+      'API_TOKEN="quoted first line',
+      'quoted second line"raw-suffix',
+    ].join("\n");
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe("[REDACTED:SECRET]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  test("stops an unquoted value at an unescaped newline", () => {
+    const raw = ["API_TOKEN=single-line", "ordinary next line"].join("\n");
+
+    const result = redact(raw);
+
+    expect(String(result.text)).toBe(
+      "[REDACTED:SECRET]\nordinary next line",
+    );
+    expect(result.replacementCount).toBe(1);
+  });
+
   test("redacts a private-key block with a class-only marker", () => {
     const raw = [
       "-----BEGIN PRIVATE KEY-----",
@@ -71,9 +112,9 @@ describe("redact", () => {
   }
 
   test("uses only typed class markers for replacements", () => {
-    const raw = `before API_TOKEN=${"D".repeat(32)} after`;
+    const raw = `before API_TOKEN=${"D".repeat(32)}`;
 
-    expect(String(redact(raw).text)).toBe("before [REDACTED:SECRET] after");
+    expect(String(redact(raw).text)).toBe("before [REDACTED:SECRET]");
   });
 
   for (const [name, raw] of [

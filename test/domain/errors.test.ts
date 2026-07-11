@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  PapercutsError,
-  safeMessage,
-  type SafeMessage,
-} from "../../src/domain/errors";
+import * as errorModule from "../../src/domain/errors";
+import { PapercutsError } from "../../src/domain/errors";
 import { redact } from "../../src/security/redactor";
 
+// @ts-expect-error SafeMessage is intentionally not part of the public API.
+type RemovedSafeMessage = import("../../src/domain/errors").SafeMessage;
+
 describe("PapercutsError", () => {
-  test("accepts a fixed safe message and omits cause from JSON", () => {
+  test("accepts a screened fixed message and omits cause from JSON", () => {
+    const message = redact("A fixed failure occurred.").text;
     const error = new PapercutsError({
       code: "fixed_failure",
       exitCode: 1,
-      message: safeMessage`A fixed failure occurred.`,
+      message,
       retryable: false,
     });
     Object.defineProperty(error, "cause", {
@@ -30,34 +31,7 @@ describe("PapercutsError", () => {
     expect(JSON.parse(JSON.stringify(error))).toEqual(error.toJSON());
   });
 
-  test("accepts an already-screened message", () => {
-    const message = redact("A screened diagnostic.").text;
-
-    const error = new PapercutsError({
-      code: "screened_failure",
-      exitCode: 6,
-      message,
-      retryable: false,
-    });
-
-    expect(error.message).toBe(message);
-  });
-
-  test("rejects interpolated safe-message templates at runtime", () => {
-    const strings = Object.assign(["Failure: ", ""], {
-      raw: ["Failure: ", ""],
-    }) as unknown as TemplateStringsArray;
-    const invoke = safeMessage as unknown as (
-      template: TemplateStringsArray,
-      ...values: string[]
-    ) => SafeMessage;
-
-    expect(() => invoke(strings, "dynamic detail")).toThrow(
-      "Safe messages must be fixed template literals without interpolations.",
-    );
-  });
-
-  test("exposes compile-time safe message boundaries", () => {
+  test("exposes only a screened compile-time message boundary", () => {
     if (false) {
       const runtimeMessage = "runtime detail";
 
@@ -69,8 +43,8 @@ describe("PapercutsError", () => {
         retryable: false,
       });
 
-      // @ts-expect-error Safe-message templates cannot interpolate values.
-      safeMessage`Failure: ${runtimeMessage}`;
+      // @ts-expect-error safeMessage is intentionally not exported.
+      errorModule.safeMessage;
     }
 
     expect(true).toBe(true);
