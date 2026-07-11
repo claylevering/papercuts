@@ -174,7 +174,7 @@ export interface PapercutStore {
 - Produces: all shared interfaces listed above, code-driven `PapercutsError`, `REDACTION_RULESET_VERSION`, `redact(raw: string): RedactionResult`, `normalizeScreenedTag(text: ScreenedText): ScreenedText`, `sha256Hex`, `resolvePapercutsPaths`, `ProcessRunner`, `bunProcessRunner`, and private-file helpers consumed by Tasks 2–4.
 - Consumes: only Bun/Node-compatible built-ins.
 
-- [ ] **Step 1: Establish the Bun project and verification scripts**
+- [x] **Step 1: Establish the Bun project and verification scripts**
 
 Create a private ESM package named `papercuts` at version `0.1.0`. Add development dependencies with `bun add --dev typescript @types/bun` and commit the generated lockfile. Preserve these fields when Bun updates the manifest:
 
@@ -201,7 +201,7 @@ Create a private ESM package named `papercuts` at version `0.1.0`. Add developme
 
 Configure TypeScript for ESNext modules, strict checking, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and Bun types. Do not create `src/index.ts` yet; Task 6 owns it, so `bun run build` is expected to fail until Task 6.
 
-- [ ] **Step 2: Write failing redactor tests**
+- [x] **Step 2: Write failing redactor tests**
 
 Cover synthetic examples for authorization headers, cookie values, private-key blocks, credential-bearing URLs, secret-named assignments, and recognized credential prefixes. Credential-prefix cases must include synthetic values constructed in the test, such as `"ghp_" + "A".repeat(24)` and `"sk-" + "B".repeat(24)`, and assert `[REDACTED:CREDENTIAL]`. Cover false-positive preservation for short lookalikes, ordinary prose, paths, commit hashes, and non-secret key names. Assert idempotency and typed class-only replacements. Include a long near-match that completes promptly.
 
@@ -228,7 +228,7 @@ Run: `bun test test/security/redactor.test.ts`
 
 Expected: FAIL because `src/security/redactor.ts` does not exist.
 
-- [ ] **Step 3: Implement the minimal pure redactor**
+- [x] **Step 3: Implement the minimal pure redactor**
 
 Export:
 
@@ -253,7 +253,7 @@ Run: `bun test test/security/redactor.test.ts`
 
 Expected: all redactor tests pass with clean output.
 
-- [ ] **Step 4: Write failing code-driven error tests, then add the domain contracts**
+- [x] **Step 4: Write failing code-driven error tests, then add the domain contracts**
 
 Write `test/domain/errors.test.ts` first. Assert all six code-to-message/exit/retry mappings and use `@ts-expect-error` to prove a second/message argument is rejected. Observe RED because the class is missing. Then create the shared interfaces verbatim and implement the closed frozen registry. `toJSON` emits only code, fixed message, exit code, and retryability.
 
@@ -261,7 +261,7 @@ Run: `bun test test/domain/errors.test.ts && bun run typecheck`
 
 Expected: all error tests pass and typecheck exits 0.
 
-- [ ] **Step 5: Write failing platform-boundary tests**
+- [x] **Step 5: Write failing platform-boundary tests**
 
 Test SHA-256 hex output, macOS default and `PAPERCUTS_HOME` path resolution, rejection of relative overrides, owner-only directory/file mode correction, and path-component symlink detection. The process contract is typechecked here and exercised with real Git commands in Task 3.
 
@@ -269,7 +269,7 @@ Run: `bun test test/platform`
 
 Expected: FAIL because the platform modules do not exist.
 
-- [ ] **Step 6: Implement the frozen platform primitives**
+- [x] **Step 6: Implement the frozen platform primitives**
 
 Use these contracts:
 
@@ -298,7 +298,7 @@ Run: `bun test test/platform && bun run typecheck`
 
 Expected: all platform tests pass and typecheck exits 0.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 Run: `bun test && bun run typecheck`
 
@@ -320,7 +320,7 @@ Commit: `feat: establish papercuts domain and redaction`
 - Consumes: `Papercut`, `PapercutQuery`, `PapercutStore`, `ScreenedText`, `PapercutsError`, and Task 1 private-file helpers.
 - Produces: `openSqliteStore(path: string): PapercutStore` and `CURRENT_SCHEMA_VERSION`.
 
-- [ ] **Step 1: Write failing store behavior tests**
+- [x] **Step 1: Write failing store behavior tests**
 
 Using a temporary directory, assert a fresh store creates the schema, appends and lists full records, filters by repository and inclusive `sinceMs`, orders ties by `(created_at_ms, id)`, respects limits, round-trips nullable Git metadata and optional fields, and reports health with integrity `"ok"`, schema version 1, a non-empty SQLite version, and an available write lock.
 
@@ -328,7 +328,7 @@ Run: `bun test test/storage/sqlite-store.test.ts`
 
 Expected: FAIL because the store module does not exist.
 
-- [ ] **Step 2: Define and apply the strict schema**
+- [x] **Step 2: Define and apply the strict schema**
 
 Migration 1 uses this schema verbatim:
 
@@ -380,7 +380,7 @@ Run: `bun test test/storage/sqlite-store.test.ts`
 
 Expected: all store behavior tests pass.
 
-- [ ] **Step 3: Write failing migration safety tests**
+- [x] **Step 3: Write failing migration safety tests**
 
 Assert migration checksums are persisted, reopening is idempotent, two concurrent openers result in one applied migration, a programmatically created schema-v0 fixture upgrades to migration 1, a checksum mismatch fails without mutation, and a synthetic future schema is refused without mutation. Hold `BEGIN IMMEDIATE` from a second connection and assert `health().lockAvailable === false`; after rollback it becomes true. Assert database, WAL, and SHM modes are `0600` after a write.
 
@@ -388,7 +388,7 @@ Run: `bun test test/storage/migrations.test.ts`
 
 Expected: at least the future-schema and checksum tests fail before safety handling is implemented.
 
-- [ ] **Step 4: Implement serialized checked migrations and busy errors**
+- [x] **Step 4: Implement serialized checked migrations and busy errors**
 
 Apply pending migrations under `BEGIN IMMEDIATE`, verify every already-applied checksum, and roll back on failure. Convert SQLite busy/locked outcomes into sanitized `PapercutsError` code `store_busy`, exit 5, retryable true. Never include SQL parameter values in error text.
 
@@ -396,7 +396,7 @@ Run: `bun test test/storage`
 
 Expected: all storage and migration tests pass.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 Run: `bun test test/storage && bun run typecheck`
 
@@ -448,7 +448,7 @@ export interface CaptureService {
 }
 ```
 
-- [ ] **Step 1: Write failing remote normalization tests**
+- [x] **Step 1: Write failing remote normalization tests**
 
 Assert equivalent HTTPS, `ssh://`, and SCP-style remotes normalize to the same credential-free host/path; lowercase hostnames and default ports normalize; path case is preserved; `.git`, query, fragment, password, token, and userinfo are removed before hashing. Ambiguous or malformed inputs return null without echoing the raw input.
 
@@ -467,7 +467,7 @@ Run: `bun test test/repository/remote.test.ts`
 
 Expected: FAIL because `remote.ts` does not exist.
 
-- [ ] **Step 2: Implement safe remote normalization**
+- [x] **Step 2: Implement safe remote normalization**
 
 Return only a canonical host/port/path string suitable for SHA-256 hashing. Do not export a helper that returns parsed credentials. Use Node-compatible URL and crypto APIs plus a small explicit SCP-style parser.
 
@@ -475,7 +475,7 @@ Run: `bun test test/repository/remote.test.ts`
 
 Expected: all normalization tests pass.
 
-- [ ] **Step 3: Write failing Git context tests**
+- [x] **Step 3: Write failing Git context tests**
 
 Create temporary Git repositories and linked worktrees. Cover root/subdirectory discovery, shared worktree identity, sanitized remote identity across two clones, branch and full HEAD capture, detached HEAD, unborn branch, missing Git repository, and cwd-relative normalization. Remote selection tests must prove: `origin` wins when present; a sole non-`origin` remote is used; multiple non-`origin` remotes cause local fallback. Put credential-prefix and secret-assignment canaries separately in repository directory name, nested cwd, branch, and remote-derived display name. Assert returned `displayName`, `root`, `cwdRelative`, `branch`, and `head` are screened and raw canaries never appear in returned context or thrown errors. Assert a screened remote preimage falls back to the local device/inode key, and compare the persisted key to `sha256Hex("local:<dev>:<ino>")` so no secret-derived hash can pass silently.
 
@@ -483,7 +483,7 @@ Run: `bun test test/repository/context.test.ts`
 
 Expected: FAIL because `context.ts` does not exist.
 
-- [ ] **Step 4: Implement best-effort repository discovery**
+- [x] **Step 4: Implement best-effort repository discovery**
 
 Run Git without a shell through Task 1's `ProcessRunner`. Resolve the real worktree root and Git common directory. Read the common directory's device/inode and define local key `sha256Hex("local:<dev>:<ino>")`; never hash the path. Normalize and redact the selected remote preimage. Use `sha256Hex("remote:<screened-normalized-remote>")` only when remote screening made zero replacements; otherwise discard it and use the local key. Repository display name comes from the screened remote path or screened worktree basename. Redact display name, root, relative cwd, branch, and HEAD before constructing `RepoContext`; sum all repository replacements into `ResolvedRepoContext.redactionCount`. Return null for an ordinary non-Git directory. Redaction failure is fatal; other unexpected context failures are sanitized and may be downgraded by the capture service to an unscoped record with a warning.
 
@@ -491,7 +491,7 @@ Run: `bun test test/repository/context.test.ts`
 
 Expected: all repository tests pass.
 
-- [ ] **Step 5: Write failing capture service tests**
+- [x] **Step 5: Write failing capture service tests**
 
 Use real redaction and an in-memory fake store. Cover required body, 65,536-byte boundary, rejection at 65,537 bytes, source validation, optional model/category/tags, tag normalization/deduplication, redaction across every persisted string, injected clock/UUID, scoped and unscoped records, and repository-warning fallback. Inspect the fake store to prove every persisted string derived from observation or Git context is screened. Separately assert the returned receipt contains ID/time/source/repository name/redaction count and cannot contain body, root, key, model, category, or tags.
 
@@ -499,7 +499,7 @@ Run: `bun test test/capture/service.test.ts`
 
 Expected: FAIL because `service.ts` does not exist.
 
-- [ ] **Step 6: Implement capture orchestration**
+- [x] **Step 6: Implement capture orchestration**
 
 Validate bounds before regular expressions. Allow at most 16 tags; model max 256 bytes; category and each tag max 64 bytes. Redact body and every optional string separately before normalization. Use Task 1 `normalizeScreenedTag` to trim and lowercase already-screened tags, then remove duplicates and stable-sort them. Sum observation replacements with `ResolvedRepoContext.redactionCount`, generate a UUIDv4 and timestamp through injected functions, append once, and return only a `CaptureReceipt` plus sanitized warnings.
 
@@ -507,7 +507,7 @@ Run: `bun test test/capture test/repository`
 
 Expected: all capture and repository tests pass.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 Run: `bun test test/capture test/repository && bun run typecheck`
 
@@ -564,7 +564,7 @@ export interface SetupPlan {
 }
 ```
 
-- [ ] **Step 1: Write failing instruction-content tests**
+- [x] **Step 1: Write failing instruction-content tests**
 
 Assert Codex and Claude content includes proactive one-or-two-sentence logging, stdin use with the correct source, once-per-distinct-issue guidance, secret/raw-output avoidance, accomplishments/bugs distinction, primary-task continuation, no recursive capture-failure logging, and no automatic transcript review.
 
@@ -572,7 +572,7 @@ Run: `bun test test/setup/content.test.ts`
 
 Expected: FAIL because `content.ts` does not exist.
 
-- [ ] **Step 2: Implement deterministic instruction templates**
+- [x] **Step 2: Implement deterministic instruction templates**
 
 Use versioned markers `<!-- papercuts:begin v1 -->` and `<!-- papercuts:end -->`. Template functions are pure and deterministic.
 
@@ -580,7 +580,7 @@ Run: `bun test test/setup/content.test.ts`
 
 Expected: content tests pass.
 
-- [ ] **Step 3: Write failing marker-parser tests**
+- [x] **Step 3: Write failing marker-parser tests**
 
 Write cases for absent, one valid block, duplicate blocks, missing begin/end, reversed markers, and nesting.
 
@@ -588,7 +588,7 @@ Run: `bun test test/setup/markers.test.ts`
 
 Expected: FAIL because `markers.ts` does not exist.
 
-- [ ] **Step 4: Implement the marker parser**
+- [x] **Step 4: Implement the marker parser**
 
 Implement the smallest parser that identifies an absent or one valid block and rejects every malformed state with a sanitized setup conflict.
 
@@ -596,7 +596,7 @@ Run: `bun test test/setup/markers.test.ts`
 
 Expected: all marker tests pass.
 
-- [ ] **Step 5: Write failing adapter planning tests**
+- [x] **Step 5: Write failing adapter planning tests**
 
 Use fixture home/repository trees. Verify Codex user scope resolves `CODEX_HOME` and active `AGENTS.override.md` precedence; otherwise targets `AGENTS.md`. Verify Codex repo scope uses a non-empty root `AGENTS.override.md` first and otherwise root `AGENTS.md`. Verify Claude targets the adapter-owned user or repo rules file. Verify generic returns a snippet and no mutation. Every plan retains its `SetupScope` and canonical scope root. Install/remove previews must not create any directory, database, lock, cache, or target file.
 
@@ -604,7 +604,7 @@ Run: `bun test test/setup/adapters.test.ts`
 
 Expected: FAIL because adapters do not exist.
 
-- [ ] **Step 6: Implement pure setup planning**
+- [x] **Step 6: Implement pure setup planning**
 
 Read only the target files required to create an ephemeral plan. Managed diffs contain only generated lines and target/action metadata, never unrelated instruction content. Generic apply requests are represented as a conflict so the CLI can reject them.
 
@@ -612,7 +612,7 @@ Run: `bun test test/setup/adapters.test.ts`
 
 Expected: all adapter planning tests pass and fixture trees remain byte-identical.
 
-- [ ] **Step 7: Write failing atomic apply tests**
+- [x] **Step 7: Write failing atomic apply tests**
 
 Cover first apply, identical reapply, upgrade of an older managed block, remove preview, remove apply, preservation of surrounding bytes/newline/mode, adapter-owned file deletion, preimage drift, target and parent-directory symlinks, non-regular-file refusal, malformed markers, scope escape, and two concurrent papercuts applies. Inject a mutation after temp-file flush but before the final preimage check and assert conflict with no rename. Assert failures leave the fixture tree unchanged; the scope-root lock must always be removed in `finally`.
 
@@ -620,7 +620,7 @@ Run: `bun test test/setup/applier.test.ts`
 
 Expected: FAIL before `applier.ts` exists.
 
-- [ ] **Step 8: Implement safe apply and undo**
+- [x] **Step 8: Implement safe apply and undo**
 
 Validate the target is lexically within `canonicalScopeRoot`, then use Task 1's path-component walker to reject symlinked parents and targets. Acquire `<canonicalScopeRoot>/.papercuts-setup-<first-16-hex-of-target-sha256>.lock` with exclusive creation so cooperating setup processes serialize even when the target parent does not exist. Recheck scope components and the target SHA-256, create target directories only during apply with mode `0700`, write a same-directory exclusive temporary file at `0600`, flush it, then recheck scope components and target SHA-256 again immediately before atomic rename. Preserve an existing target's mode, flush the parent directory, and remove lock/temp files in `finally`. Delete only an entirely adapter-owned file. Convert conflicts into sanitized exit-4 `PapercutsError` values. Document that this is cooperative concurrency protection plus a final preimage check; no portable filesystem API can provide compare-and-swap against an unrelated editor in the final rename instant.
 
@@ -628,7 +628,7 @@ Run: `bun test test/setup`
 
 Expected: all setup tests pass with clean output.
 
-- [ ] **Step 9: Commit Task 4**
+- [x] **Step 9: Commit Task 4**
 
 Run: `bun test test/setup && bun run typecheck`
 
@@ -676,7 +676,7 @@ export function renderStats(summary: StatsSummary, scope: ScopeDescriptor): stri
 export function renderMarkdown(records: readonly Papercut[], scope: ScopeDescriptor): string;
 ```
 
-- [ ] **Step 1: Write failing statistics tests**
+- [x] **Step 1: Write failing statistics tests**
 
 Cover empty input, UTC day buckets, source/repository/category counts, `redactedRecordCount` (records whose replacement count is greater than zero), total `replacementCount`, exact repeated redacted bodies, stable lexical keys, and time range.
 
@@ -684,7 +684,7 @@ Run: `bun test test/views/stats.test.ts`
 
 Expected: FAIL because `stats.ts` does not exist.
 
-- [ ] **Step 2: Implement deterministic structural statistics**
+- [x] **Step 2: Implement deterministic structural statistics**
 
 Return plain readonly data. Do not infer topics, causes, priority, or remediation. Exact-repeat counts use the already-redacted body.
 
@@ -692,7 +692,7 @@ Run: `bun test test/views/stats.test.ts`
 
 Expected: all stats tests pass.
 
-- [ ] **Step 3: Write failing human and Markdown rendering tests**
+- [x] **Step 3: Write failing human and Markdown rendering tests**
 
 Cover empty results, multiline bodies, Unicode, raw HTML, headings/front matter, and bodies containing backtick runs longer than the normal fence. Put hostile Markdown/HTML/backtick canaries separately in repository display name, branch, relative cwd, model, category, and tags. Assert every metadata canary is rendered inert, exports omit absolute roots and repository fingerprints, and output remains byte-identical for the same input.
 
@@ -700,7 +700,7 @@ Run: `bun test test/views/human.test.ts test/views/markdown.test.ts`
 
 Expected: FAIL because rendering modules do not exist.
 
-- [ ] **Step 4: Implement safe deterministic renderers**
+- [x] **Step 4: Implement safe deterministic renderers**
 
 Human list output uses readable timestamp/source/repository metadata and the full redacted body. Markdown uses a dynamically longer backtick fence than any body run. Render every metadata string through an inline-code helper that chooses a delimiter longer than the input's longest backtick run and escapes `<`, `>`, and `&` before interpolation. Include safe repo display name, branch, relative cwd, model, category, and tags only when present. Do not include generation time.
 
@@ -708,7 +708,7 @@ Run: `bun test test/views`
 
 Expected: all view tests pass.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 Run: `bun test test/views && bun run typecheck`
 
