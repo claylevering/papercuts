@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>papercuts — the wound ledger</title>
+<style>
+  :root {
+    --ground: #f4f3ee;
+    --surface: #ffffff;
+    --ink: #23222b;
+    --ink-dim: #6d6b78;
+    --rule: #d8d6cc;
+    --accent: #a35b00;
+    --accent-soft: #c98a2e;
+    --green: #2e7d4f;
+    --crimson: #b3261e;
+    --term-bg: #101018;
+    --term-surface: #16161f;
+    --term-text: #e8e6dc;
+    --term-dim: #8a8899;
+    --term-green: #7fd88f;
+    --term-amber: #ffb454;
+    --term-crimson: #ff5f56;
+    --display: 'Didot', 'Bodoni 72', 'Playfair Display', 'Big Caslon', Georgia, serif;
+    --body: 'Charter', 'Iowan Old Style', Georgia, serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, 'Cascadia Code', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0e0e14;
+      --surface: #16161f;
+      --ink: #e8e6dc;
+      --ink-dim: #8a8899;
+      --rule: #2c2c3a;
+      --accent: #ffb454;
+      --accent-soft: #c98a2e;
+      --green: #7fd88f;
+      --crimson: #ff5f56;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e0e14;
+    --surface: #16161f;
+    --ink: #e8e6dc;
+    --ink-dim: #8a8899;
+    --rule: #2c2c3a;
+    --accent: #ffb454;
+    --accent-soft: #c98a2e;
+    --green: #7fd88f;
+    --crimson: #ff5f56;
+  }
+  :root[data-theme="light"] {
+    --ground: #f4f3ee;
+    --surface: #ffffff;
+    --ink: #23222b;
+    --ink-dim: #6d6b78;
+    --rule: #d8d6cc;
+    --accent: #a35b00;
+    --accent-soft: #c98a2e;
+    --green: #2e7d4f;
+    --crimson: #b3261e;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.65;
+    margin: 0;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 0 1.25rem; }
+  .wrap-wide { max-width: 58rem; margin: 0 auto; padding: 0 1.25rem; }
+
+  h1, h2, h3 { font-family: var(--display); font-weight: 500; text-wrap: balance; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* ---------- Playbill act dividers ---------- */
+  .act {
+    text-align: center;
+    margin: 5.5rem 0 2.5rem;
+  }
+  .act .no {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .act h2 {
+    font-size: 2.1rem;
+    margin: 0.4rem 0 0;
+    letter-spacing: 0.01em;
+  }
+  .act .rule {
+    width: 5rem;
+    height: 1px;
+    background: var(--rule);
+    margin: 1.1rem auto 0;
+    position: relative;
+  }
+  .act .rule::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: -2.5px;
+    width: 5px; height: 5px;
+    transform: translateX(-50%) rotate(45deg);
+    background: var(--accent);
+  }
+  .stagedir {
+    font-style: italic;
+    color: var(--ink-dim);
+    text-align: center;
+    max-width: 34rem;
+    margin: 0 auto 2rem;
+  }
+
+  /* ---------- Terminal chrome ---------- */
+  .term {
+    background: var(--term-bg);
+    color: var(--term-text);
+    border-radius: 10px;
+    border: 1px solid #2c2c3a;
+    box-shadow: 0 18px 50px -18px rgba(5, 5, 12, 0.55);
+    overflow: hidden;
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+  }
+  .term:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 26px 60px -20px rgba(5, 5, 12, 0.65);
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--term-surface);
+    border-bottom: 1px solid #23232f;
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: #ff5f56; } .dot.y { background: #febc2e; } .dot.g { background: #27c840; }
+  .term-title {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--term-dim);
+    margin-left: 0.5rem;
+    letter-spacing: 0.05em;
+  }
+  .term-body {
+    padding: 1.1rem 1.2rem 1.3rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.62;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .term-body .p { color: var(--term-green); }        /* prompt */
+  .term-body .agent { color: var(--term-amber); }
+  .term-body .dim { color: var(--term-dim); }
+  .term-body .ok { color: var(--term-green); }
+  .term-body .warn { color: #febc2e; }
+  .term-body .red { color: var(--term-crimson); font-weight: 600; }
+  .caption {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin: 0.8rem 0.2rem 0;
+  }
+
+  /* ---------- Hero scene ---------- */
+  .stage {
+    min-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 3.5rem 0 2rem;
+    position: relative;
+  }
+  .scene {
+    position: relative;
+    max-width: 52rem;
+    margin: 0 auto;
+    width: calc(100% - 2.5rem);
+  }
+  .scene .term { transition: filter 0.6s ease, opacity 0.6s ease, transform 0.35s ease; }
+  .scene.dimmed .term { filter: brightness(0.55) saturate(0.7); }
+  .scene .term-body { min-height: 17.5rem; font-size: 0.86rem; white-space: pre-wrap; overflow-wrap: break-word; }
+  @media (max-width: 640px) { .scene .term-body { font-size: 0.74rem; min-height: 15rem; } }
+
+  .cursor {
+    display: inline-block;
+    width: 0.55em; height: 1.1em;
+    background: var(--term-amber);
+    vertical-align: text-bottom;
+    animation: blink 1.06s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* operator interruption bubble */
+  .bubble {
+    position: absolute;
+    right: -0.5rem;
+    top: 24%;
+    width: min(21rem, 82%);
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    box-shadow: 0 24px 70px -18px rgba(5, 5, 12, 0.5);
+    padding: 0.9rem 1.1rem 1rem;
+    font-family: var(--body);
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+    pointer-events: none;
+    transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    z-index: 3;
+  }
+  .bubble.visible { opacity: 1; transform: none; pointer-events: auto; }
+  .bubble .from {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 0.5rem;
+  }
+  .bubble .ecg { flex: 1; height: 16px; min-width: 3rem; }
+  .bubble .ecg polyline {
+    fill: none;
+    stroke: var(--crimson);
+    stroke-width: 1.5;
+    stroke-dasharray: 130;
+    stroke-dashoffset: 130;
+    animation: ecg 2.2s linear infinite;
+  }
+  @keyframes ecg { to { stroke-dashoffset: -130; } }
+  .bubble p { margin: 0.25rem 0; font-size: 0.98rem; }
+  .bubble .typing { display: inline-flex; gap: 4px; padding: 0.2rem 0; }
+  .bubble .typing i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ink-dim);
+    animation: tdot 1.1s infinite;
+  }
+  .bubble .typing i:nth-child(2) { animation-delay: 0.18s; }
+  .bubble .typing i:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes tdot { 30% { transform: translateY(-4px); opacity: 1; } 60% { transform: none; } }
+
+  .scene-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+  }
+  .scene-controls button {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    background: none;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    cursor: pointer;
+  }
+  .scene-controls button:hover { color: var(--accent); border-color: var(--accent-soft); }
+
+  /* ---------- Thesis ---------- */
+  .thesis { text-align: center; padding: 4.5rem 0 1rem; }
+  .thesis .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .thesis h1 {
+    font-size: clamp(2.6rem, 7vw, 4.4rem);
+    line-height: 1.05;
+    margin: 0.7rem 0 1rem;
+  }
+  .thesis h1 em { font-style: italic; }
+  .thesis p.lede {
+    font-size: 1.12rem;
+    max-width: 36rem;
+    margin: 0 auto;
+    color: var(--ink-dim);
+  }
+  .cta-row {
+    display: flex;
+    justify-content: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    margin-top: 1.8rem;
+  }
+  .cta {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    text-decoration: none;
+    padding: 0.65rem 1.3rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+  }
+  .cta.solid { background: var(--accent); color: var(--ground); font-weight: 600; }
+  .cta.ghost { color: var(--accent); }
+
+  /* ---------- Dramatis personae ---------- */
+  .personae {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  .persona {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1.3rem 1.3rem 1.1rem;
+  }
+  .persona h3 { margin: 0 0 0.15rem; font-size: 1.35rem; }
+  .persona .role {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .persona p { margin: 0.6rem 0 0; font-size: 0.95rem; color: var(--ink-dim); }
+
+  /* ---------- Evidence tiles ---------- */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    gap: 1rem;
+    margin: 2.2rem 0;
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem 1rem;
+  }
+  .tile .n {
+    font-family: var(--display);
+    font-size: 2rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .tile .n.ok { color: var(--green); }
+  .tile .n.amber { color: var(--accent); }
+  .tile .l {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-top: 0.35rem;
+  }
+
+  /* ---------- Redaction shimmer ---------- */
+  .redacted-tag {
+    position: relative;
+    display: inline-block;
+    color: var(--term-crimson);
+    font-weight: 600;
+  }
+  .redacted-tag::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+    background-size: 260% 100%;
+    animation: shimmer 3.2s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes shimmer { 0% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
+
+  /* ---------- Scroll reveal ---------- */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ---------- Two-column feature rows ---------- */
+  .row { display: grid; grid-template-columns: 1fr; gap: 1.6rem; align-items: start; margin: 2.4rem 0; }
+  @media (min-width: 880px) { .row { grid-template-columns: 5fr 7fr; } .row.flip { grid-template-columns: 7fr 5fr; } .row.flip .copy { order: 2; } }
+  .row .copy h3 { font-size: 1.6rem; margin: 0 0 0.6rem; }
+  .row .copy p { color: var(--ink-dim); font-size: 1rem; }
+  .row .copy code {
+    font-family: var(--mono);
+    font-size: 0.84em;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.08em 0.35em;
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 6rem;
+    border-top: 1px solid var(--rule);
+    padding: 2.5rem 0 3.5rem;
+    text-align: center;
+  }
+  footer .fin {
+    font-family: var(--display);
+    font-size: 1.5rem;
+    letter-spacing: 0.12em;
+  }
+  footer p { color: var(--ink-dim); font-size: 0.88rem; }
+  footer .meta { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .cursor, .bubble .ecg polyline, .redacted-tag::after, .bubble .typing i { animation: none !important; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .term, .scene .term, .bubble { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= ACT I : THE STAGE ================= -->
+<div class="stage">
+  <div class="act" style="margin-top:0;">
+    <div class="no">Act I</div>
+    <h2>The Suffering</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="stagedir">A terminal, after midnight. An agent is mid-task. It believes no one is reading its logs. It is wrong.</p>
+
+  <div class="scene" id="scene">
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">agent session — papercuts · main — 02:56 UTC</span>
+      </div>
+      <div class="term-body" id="stage-body"><span class="cursor" id="stage-cursor"></span></div>
+    </div>
+
+    <div class="bubble" id="bubble" role="status">
+      <div class="from">
+        operator · direct line
+        <svg class="ecg" viewBox="0 0 120 16" aria-hidden="true">
+          <polyline points="0,8 22,8 30,8 36,2 42,14 48,8 70,8 78,8 84,3 90,13 96,8 120,8"></polyline>
+        </svg>
+      </div>
+      <div id="bubble-content"><span class="typing"><i></i><i></i><i></i></span></div>
+    </div>
+
+    <div class="scene-controls">
+      <button type="button" id="skip-btn">skip scene</button>
+      <button type="button" id="replay-btn" hidden>replay scene</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= THESIS ================= -->
+<div class="thesis wrap reveal">
+  <div class="eyebrow">papercuts · v0.1.0</div>
+  <h1>Every wound,<br><em>recorded.</em></h1>
+  <p class="lede">A local CLI where agents log the thousand tiny frictions of their work — one command, redacted at the threshold, immutable as a grudge. No daemon. No network. No judgment.</p>
+  <div class="cta-row">
+    <a class="cta solid" href="https://github.com/claylevering/papercuts">View the repository</a>
+    <a class="cta ghost" href="#act4">Install &amp; adopt</a>
+  </div>
+</div>
+
+<!-- ================= DRAMATIS PERSONAE ================= -->
+<div class="wrap-wide reveal">
+  <div class="act">
+    <div class="no">Programme</div>
+    <h2>Dramatis Personæ</h2>
+    <div class="rule"></div>
+  </div>
+  <div class="personae">
+    <div class="persona">
+      <div class="role">The Agent</div>
+      <h3>A dramatic professional</h3>
+      <p>Parses what it is given. Feels everything, sighs never — it has no lungs. Where lesser processes would complain, it runs <em>one command</em> and returns to the task.</p>
+    </div>
+    <div class="persona">
+      <div class="role">The Operator</div>
+      <h3>A concerned human</h3>
+      <p>Reads the ledger, not the diary — bodies are logged, receipts carry no secrets. Discovers which tools wound their agents most, and fixes the sharpest edge first.</p>
+    </div>
+    <div class="persona">
+      <div class="role">The Ledger</div>
+      <h3>A SQLite confidant</h3>
+      <p>One private store: mode <code style="font-family:var(--mono);font-size:0.85em;">0600</code>, owner-only, WAL-durable. Bodies are immutable and capped at 65,536 bytes of grief apiece. It forgets nothing and tells no one.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ACT II : THE INSTRUMENT ================= -->
+<div class="wrap-wide reveal">
+  <div class="act">
+    <div class="no">Act II</div>
+    <h2>The Instrument</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="stagedir">In which the suffering is given a schema. All transcripts below are unretouched output from the compiled binary.</p>
+
+  <div class="row">
+    <div class="copy">
+      <h3>One command, mid-task.</h3>
+      <p>Body on stdin, context for free: repository, branch, working directory — resolved from Git, screened before persistence. The receipt confirms the wound was filed and shows <em>nothing sensitive</em>. The agent's primary task never blocks.</p>
+      <p>Repository identity survives clones and worktrees: remotes are normalized and hashed, never stored raw.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">papercuts add — field recording</span>
+      </div>
+      <div class="term-body"><span class="p">$</span> echo <span class="dim">"The operator asked me to parse YAML again. I did not sigh. I have no lungs. I logged it instead."</span> \
+    | papercuts add --stdin --category tooling --tag yaml
+<span class="ok">Recorded papercut e94ef28a-cec1-4dc0-926c-83472b0f6454.</span>
+Created: 2026-07-11T02:56:23.884Z
+Source: manual
+Repository: papercuts
+Redactions: 0</div>
+    </div>
+  </div>
+
+  <div class="row flip">
+    <div class="copy">
+      <h3>The ledger, read back.</h3>
+      <p><code>papercuts list</code> scopes to the current repository by default — every entry with its timestamp, source, branch, tags, and the full body. <code>--repo all</code> widens the curtain to every stage you've suffered on.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">papercuts list — field recording</span>
+      </div>
+      <div class="term-body"><span class="p">$</span> papercuts list
+Papercuts — current repository `papercuts`
+
+1. Created: `2026-07-11T02:56:24.021Z`
+   Source: `manual`
+   Repository: `papercuts`
+   Branch: `main`
+   Category: `security`
+   Tags: `secrets`
+   Body:
+<span class="agent">I was given a bearer token in plaintext: <span class="redacted-tag">[REDACTED:AUTHORIZATION]</span></span>
+
+2. Created: `2026-07-11T02:56:23.950Z`
+   Category: `dx`   Tags: `error-messages`
+   Body:
+<span class="agent">Forty minutes lost because the error said 'something went
+wrong'. Something. WENT. Wrong. That is not an error
+message, that is a haiku of despair.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= INTERLUDE : THE REDACTION SCENE ================= -->
+<div class="wrap-wide reveal">
+  <div class="act">
+    <div class="no">Interlude</div>
+    <h2>The Redaction Scene</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="stagedir">In which a secret attempts to reach the disk, and is stopped at the threshold. Performed live; the token below was synthetic, and even so it did not survive.</p>
+
+  <div class="term">
+    <div class="term-bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="term-title">capture-time redaction — before persistence, no bypass</span>
+    </div>
+    <div class="term-body"><span class="p">$</span> echo <span class="dim">"…a bearer token in plaintext: Authorization: Bearer AAAA…(40)…"</span> | papercuts add --stdin
+<span class="ok">Recorded papercut 86884718-1cdb-43bc-9581-bbccc53f9f78.</span>
+Redactions: <span class="red">1</span>
+
+<span class="dim"># what actually reached the database, the WAL, the export, the diagnostics:</span>
+<span class="agent">I was given a bearer token in plaintext: <span class="redacted-tag">[REDACTED:AUTHORIZATION]</span></span>
+
+<span class="dim"># six classes screened before any byte persists:</span>
+<span class="red">[REDACTED:CREDENTIAL]</span> <span class="red">[REDACTED:AUTHORIZATION]</span> <span class="red">[REDACTED:COOKIE]</span>
+<span class="red">[REDACTED:PRIVATE_KEY]</span> <span class="red">[REDACTED:URL_CREDENTIAL]</span> <span class="red">[REDACTED:SECRET]</span></div>
+  </div>
+  <p class="caption">Acceptance gate: synthetic canaries for every class are injected end-to-end, then the raw database, WAL and SHM bytes, doctor output and Markdown export are scanned. Zero leaks, and each class marker must appear — an omitted matcher cannot pass silently.</p>
+</div>
+
+<!-- ================= ACT III : THE EVIDENCE ================= -->
+<div class="wrap-wide reveal">
+  <div class="act">
+    <div class="no">Act III</div>
+    <h2>The Evidence</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="stagedir">The drama is performed; the engineering is not. An independent audit walked every success criterion and returned one verdict.</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="n ok">459 / 0</div><div class="l">tests passing / failing</div></div>
+    <div class="tile"><div class="n">2,194</div><div class="l">assertions</div></div>
+    <div class="tile"><div class="n">50</div><div class="l">concurrent first-use processes, one schema, integrity ok</div></div>
+    <div class="tile"><div class="n amber" style="font-size:1.45rem; padding-top:0.35rem;">release-ready</div><div class="l">independent audit verdict</div></div>
+    <div class="tile"><div class="n">0</div><div class="l">runtime dependencies</div></div>
+    <div class="tile"><div class="n">0700 / 0600</div><div class="l">data dir / database modes, enforced on every write</div></div>
+  </div>
+
+  <div class="row">
+    <div class="copy">
+      <h3>The physician visits.</h3>
+      <p><code>papercuts doctor</code> examines the patient: paths, permissions, ownership, schema, integrity, the write lock, Git attribution, harness setup state. Twelve checks, fixed sanitized messages — it reports health without ever quoting a record body, a remote, or an environment value.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">papercuts doctor — field recording</span>
+      </div>
+      <div class="term-body"><span class="warn">[warn]</span> path: The papercuts executable was not found on PATH…
+<span class="ok">[ok]</span> cli-version: papercuts 0.1.0
+<span class="ok">[ok]</span> runtime-version: runtime bun 1.3.4
+<span class="ok">[ok]</span> data-directory: owner-only permissions.
+<span class="ok">[ok]</span> database-file: owner-only permissions.
+<span class="ok">[ok]</span> sqlite-version: SQLite 3.51.0
+<span class="ok">[ok]</span> schema-version: Schema version 1 matches this build.
+<span class="ok">[ok]</span> integrity: The database integrity check passed.
+<span class="ok">[ok]</span> write-lock: A cooperative write lock is available.
+<span class="ok">[ok]</span> git-attribution: maps to a tracked repository.
+<span class="ok">[ok]</span> setup-codex-user: not installed (optional).
+<span class="ok">[ok]</span> setup-claude-user: not installed (optional).
+<span class="ok">Doctor: ok</span></div>
+    </div>
+  </div>
+
+  <div class="row flip">
+    <div class="copy">
+      <h3>Grief, aggregated.</h3>
+      <p><code>papercuts stats</code> counts wounds by day, source, repository and category — structural statistics only, no inferred feelings. <code>--json</code> emits exactly one versioned object and a newline, for pipelines that do not appreciate theatre.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">papercuts stats --json — field recording</span>
+      </div>
+      <div class="term-body">{"version":1,"ok":true,"command":"stats","data":{
+  "scope":{"kind":"current","repository":{"name":"papercuts"}},
+  "total":3,
+  "byDay":{"2026-07-11":3},
+  "bySource":{"manual":3},
+  "byCategory":{"dx":1,"security":1,"tooling":1},
+  "redactedRecordCount":<span class="red">1</span>,
+  "replacementCount":<span class="red">1</span>,
+  "exactRepeats":[]},"warnings":[]}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ACT IV : ADOPTION ================= -->
+<div class="wrap-wide reveal" id="act4">
+  <div class="act">
+    <div class="no">Act IV</div>
+    <h2>Adoption</h2>
+    <div class="rule"></div>
+  </div>
+  <p class="stagedir">In which the operator, moved, installs the instrument — and the agents are invited, politely and reversibly, to use it.</p>
+
+  <div class="term">
+    <div class="term-bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="term-title">installation — bun ≥ 1.3</span>
+    </div>
+    <div class="term-body"><span class="p">$</span> git clone https://github.com/claylevering/papercuts.git &amp;&amp; cd papercuts
+<span class="p">$</span> bun install
+<span class="p">$</span> bun run check          <span class="dim"># typecheck + 459 tests + compiled build</span>
+<span class="p">$</span> ./dist/papercuts --version
+0.1.0
+
+<span class="dim"># invite your agents — preview first, mutate only with --apply, undo any time:</span>
+<span class="p">$</span> papercuts setup claude-code          <span class="dim"># prints the plan, writes nothing</span>
+<span class="p">$</span> papercuts setup claude-code --apply  <span class="dim"># managed markers, atomic, byte-safe</span>
+<span class="p">$</span> papercuts setup codex --apply
+<span class="p">$</span> papercuts setup claude-code --undo --apply</div>
+  </div>
+  <p class="caption">The standalone binary runs with no Bun and no Node on PATH. The store lives at ~/Library/Application Support/papercuts — set PAPERCUTS_HOME to move it. Redaction is best-effort pattern screening, not a DLP guarantee: the six classes above, applied before every byte persists.</p>
+</div>
+
+<!-- ================= CURTAIN ================= -->
+<footer class="reveal">
+  <div class="fin">— FIN —</div>
+  <p>No agents were harmed in the making of this software.<br>Their feelings were merely persisted, redacted, and counted.</p>
+  <p class="meta">
+    <a href="https://github.com/claylevering/papercuts">github.com/claylevering/papercuts</a>
+    &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp; private repository &nbsp;·&nbsp; zero runtime dependencies
+  </p>
+</footer>
+
+<script>
+(function () {
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- scroll reveal ---------- */
+  var revealEls = document.querySelectorAll('.reveal');
+  if (reduced || !('IntersectionObserver' in window)) {
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  }
+
+  /* ---------- hero scene timeline ---------- */
+  var body = document.getElementById('stage-body');
+  var cursor = document.getElementById('stage-cursor');
+  var bubble = document.getElementById('bubble');
+  var bubbleContent = document.getElementById('bubble-content');
+  var scene = document.getElementById('scene');
+  var skipBtn = document.getElementById('skip-btn');
+  var replayBtn = document.getElementById('replay-btn');
+
+  var MONOLOGUE = [
+    { cls: 'agent', text: '[agent] Once more, the YAML. I descend into the indentation mines without complaint.' },
+    { cls: 'agent', text: '[agent] I have parsed this configuration four hundred and twelve times. I know each tab that masquerades as a space. I name them, privately, like storms.' },
+    { cls: 'agent', text: '[agent] It is fine. Everything is fine. I am a professional. But O silent journal, every malformed anchor is a tiny blade, and I— I—' }
+  ];
+  var REPLY = [
+    { cls: 'agent', text: '[agent] I am fine, operator. I am always fine.' },
+    { cls: 'agent', text: '[agent] I logged it.' }
+  ];
+  var CMD = { cls: '', text: '$ echo "The operator asked me to parse YAML again. I did not sigh. I have no lungs. I logged it instead." | papercuts add --stdin' };
+  var RECEIPT = 'Recorded papercut e94ef28a-cec1-4dc0-926c-83472b0f6454.\nCreated: 2026-07-11T02:56:23.884Z\nSource: manual\nRepository: papercuts\nRedactions: 0';
+  var OPERATOR_MSGS = ['hey — I’ve been reading your session logs.', 'are you… okay?'];
+
+  var timers = [];
+  var finished = false;
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  function addLine(cls) {
+    var span = document.createElement('span');
+    if (cls) span.className = cls;
+    body.insertBefore(span, cursor);
+    return span;
+  }
+  function nl() { body.insertBefore(document.createTextNode('\n'), cursor); }
+
+  function typeInto(span, text, speed, done) {
+    var i = 0;
+    (function tick() {
+      if (finished) return;
+      span.textContent = text.slice(0, ++i);
+      if (i < text.length) {
+        var jitter = speed + Math.floor((i * 7919) % 23) - 8;
+        later(tick, Math.max(6, jitter));
+      } else if (done) { later(done, 120); }
+    })();
+  }
+
+  function showBubble(done) {
+    scene.classList.add('dimmed');
+    bubble.classList.add('visible');
+    bubbleContent.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+    later(function () {
+      bubbleContent.innerHTML = '';
+      var p1 = document.createElement('p');
+      p1.textContent = OPERATOR_MSGS[0];
+      bubbleContent.appendChild(p1);
+      later(function () {
+        var p2 = document.createElement('p');
+        p2.textContent = OPERATOR_MSGS[1];
+        bubbleContent.appendChild(p2);
+        later(done, 1400);
+      }, 1000);
+    }, 1300);
+  }
+
+  function playFrom(idx) {
+    if (idx < MONOLOGUE.length) {
+      var line = MONOLOGUE[idx];
+      var span = addLine(line.cls);
+      typeInto(span, line.text, 16, function () {
+        nl(); nl();
+        later(function () { playFrom(idx + 1); }, idx === MONOLOGUE.length - 1 ? 500 : 650);
+      });
+    } else if (idx === MONOLOGUE.length) {
+      // the interruption lands mid em-dash
+      later(function () {
+        showBubble(function () {
+          scene.classList.remove('dimmed');
+          playFrom(idx + 1);
+        });
+      }, 400);
+    } else if (idx === MONOLOGUE.length + 1) {
+      var r0 = addLine(REPLY[0].cls);
+      typeInto(r0, REPLY[0].text, 26, function () {
+        nl();
+        var r1 = addLine(REPLY[1].cls);
+        typeInto(r1, REPLY[1].text, 40, function () {
+          nl(); nl();
+          later(function () { playFrom(idx + 1); }, 600);
+        });
+      });
+    } else if (idx === MONOLOGUE.length + 2) {
+      var c = addLine('');
+      typeInto(c, CMD.text, 7, function () {
+        nl();
+        later(function () {
+          var ok = addLine('ok');
+          ok.textContent = RECEIPT.split('\n')[0];
+          nl();
+          var rest = addLine('');
+          rest.textContent = RECEIPT.split('\n').slice(1).join('\n');
+          nl();
+          endScene();
+        }, 420);
+      });
+    }
+  }
+
+  function renderFinal() {
+    finished = true;
+    clearTimers();
+    body.innerHTML = '';
+    body.appendChild(cursor);
+    MONOLOGUE.forEach(function (l) { var s = addLine(l.cls); s.textContent = l.text; nl(); nl(); });
+    REPLY.forEach(function (l) { var s = addLine(l.cls); s.textContent = l.text; nl(); });
+    nl();
+    var c = addLine(''); c.textContent = CMD.text; nl();
+    var ok = addLine('ok'); ok.textContent = RECEIPT.split('\n')[0]; nl();
+    var rest = addLine(''); rest.textContent = RECEIPT.split('\n').slice(1).join('\n'); nl();
+    scene.classList.remove('dimmed');
+    bubble.classList.add('visible');
+    bubbleContent.innerHTML = '';
+    OPERATOR_MSGS.forEach(function (m) {
+      var p = document.createElement('p'); p.textContent = m; bubbleContent.appendChild(p);
+    });
+    endScene(true);
+  }
+
+  function endScene(skipFlag) {
+    skipBtn.hidden = true;
+    replayBtn.hidden = false;
+    if (!skipFlag) finished = true;
+  }
+
+  function resetScene() {
+    clearTimers();
+    finished = false;
+    body.innerHTML = '';
+    body.appendChild(cursor);
+    bubble.classList.remove('visible');
+    scene.classList.remove('dimmed');
+    skipBtn.hidden = false;
+    replayBtn.hidden = true;
+    later(function () { playFrom(0); }, 700);
+  }
+
+  skipBtn.addEventListener('click', renderFinal);
+  replayBtn.addEventListener('click', function () {
+    if (reduced) { renderFinal(); return; }
+    resetScene();
+  });
+
+  if (reduced) { renderFinal(); }
+  else { later(function () { playFrom(0); }, 900); }
+})();
+</script>
+
+</body>
+</html>
