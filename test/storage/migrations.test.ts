@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,7 +122,11 @@ describe("SQLite migrations and safety", () => {
   });
 
   test("refuses a checksum mismatch without mutating schema state", () => {
-    openStore().close();
+    const seeded = openStore();
+    seeded.append(
+      makePapercut({ id: "00000000-0000-4000-8000-000000000906" }),
+    );
+    seeded.close();
     const fixture = new Database(databasePath, { strict: true });
     fixture
       .query("UPDATE schema_migrations SET checksum = ? WHERE version = 1")
@@ -157,6 +168,27 @@ describe("SQLite migrations and safety", () => {
     expect(readLogicalSchemaSnapshot(databasePath)).toEqual(before);
   });
 
+  test("rolls back every migration statement after a deterministic mid-migration failure", () => {
+    const fixture = new Database(databasePath, { create: true, strict: true });
+    fixture.query("PRAGMA journal_mode = WAL").get();
+    fixture.run("CREATE TABLE conflict_target (value TEXT NOT NULL) STRICT");
+    fixture.run(
+      "CREATE INDEX papercuts_created_idx ON conflict_target(value)",
+    );
+    fixture.run("CREATE TABLE rollback_marker (value TEXT NOT NULL) STRICT");
+    fixture.query("INSERT INTO rollback_marker (value) VALUES (?)").run("kept");
+    fixture.close();
+    const before = readLogicalSchemaSnapshot(databasePath);
+
+    const error = captureOpenError(databasePath);
+    const after = readLogicalSchemaSnapshot(databasePath);
+
+    expect(error).toBeInstanceOf(PapercutsError);
+    expect((error as PapercutsError).code).toBe("internal_error");
+    expect(withoutFileModes(after)).toEqual(withoutFileModes(before));
+    expect(after.files.every(({ mode }) => mode === 0o600)).toBe(true);
+  });
+
   test("reports a held write lock as unavailable and recovers after rollback", () => {
     const store = openStore();
     const lockHolder = new Database(databasePath, { strict: true });
@@ -181,6 +213,7 @@ describe("SQLite migrations and safety", () => {
 
     try {
       lockHolder.run("BEGIN IMMEDIATE");
+      const startedAt = performance.now();
       const error = captureError(() =>
         store.append(
           makePapercut({
@@ -189,6 +222,7 @@ describe("SQLite migrations and safety", () => {
           }),
         )
       );
+      const elapsedMs = performance.now() - startedAt;
 
       expect(error).toBeInstanceOf(PapercutsError);
       expect((error as PapercutsError).toJSON()).toEqual({
@@ -202,9 +236,57 @@ describe("SQLite migrations and safety", () => {
         "database is locked",
       );
       expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("INSERT");
+      expect(elapsedMs).toBeGreaterThanOrEqual(1_800);
+      expect(elapsedMs).toBeLessThan(3_500);
     } finally {
       if (lockHolder.inTransaction) lockHolder.run("ROLLBACK");
       lockHolder.close();
+    }
+  });
+
+  test("maps an actual SQLITE_BUSY_SNAPSHOT outcome to store_busy", () => {
+    const store = openStore();
+    const sqliteError = createBusySnapshotError(
+      join(directory, "busy-snapshot.sqlite3"),
+    );
+    expect((sqliteError as { code?: unknown }).code).toBe(
+      "SQLITE_BUSY_SNAPSHOT",
+    );
+
+    const error = captureError(() =>
+      store.append(recordWhoseTagsThrow(sqliteError))
+    );
+
+    expect(error).toBeInstanceOf(PapercutsError);
+    expect((error as PapercutsError).toJSON()).toEqual({
+      code: "store_busy",
+      exitCode: 5,
+      message: "The papercuts store is busy; try again.",
+      retryable: true,
+    });
+    expect(`${String(error)}${JSON.stringify(error)}`).not.toContain(
+      "database is locked",
+    );
+  });
+
+  test("maps extended SQLITE_LOCKED families and base errno to store_busy", () => {
+    const store = openStore();
+    const extendedLocked = Object.assign(new Error("raw locked diagnostic"), {
+      code: "SQLITE_LOCKED_SHAREDCACHE",
+    });
+    const baseBusyErrno = Object.assign(new Error("raw busy diagnostic"), {
+      code: "SQLITE_UNKNOWN_EXTENSION",
+      errno: 5 | (9 << 8),
+    });
+
+    for (const sqliteError of [extendedLocked, baseBusyErrno]) {
+      const error = captureError(() =>
+        store.append(recordWhoseTagsThrow(sqliteError))
+      );
+
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).code).toBe("store_busy");
+      expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("raw");
     }
   });
 
@@ -232,6 +314,56 @@ describe("SQLite migrations and safety", () => {
     for (const path of databaseFiles) expect(fileMode(path)).toBe(0o600);
   });
 
+  test("sanitizes a failure to create the private data directory", () => {
+    const blockedParent = join(directory, "blocked-parent");
+    writeFileSync(blockedParent, "not-a-directory", { mode: 0o600 });
+    const blockedDatabase = join(blockedParent, "papercuts.sqlite3");
+
+    const error = captureOpenError(blockedDatabase);
+
+    expect(error).toBeInstanceOf(PapercutsError);
+    expect((error as PapercutsError).toJSON()).toEqual({
+      code: "safety_failure",
+      exitCode: 6,
+      message: "The operation failed a safety check.",
+      retryable: false,
+    });
+    expect(`${String(error)}${JSON.stringify(error)}`).not.toContain(
+      blockedParent,
+    );
+    expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("EEXIST");
+  });
+
+  test("sanitizes append-time permission correction failures", () => {
+    const store = openStore();
+    const heldDatabasePath = `${databasePath}.held`;
+    renameSync(databasePath, heldDatabasePath);
+    symlinkSync("/dev/null", databasePath);
+
+    try {
+      const error = captureError(() =>
+        store.append(
+          makePapercut({ id: "00000000-0000-4000-8000-000000000907" }),
+        )
+      );
+
+      expect(error).toBeInstanceOf(PapercutsError);
+      expect((error as PapercutsError).toJSON()).toEqual({
+        code: "safety_failure",
+        exitCode: 6,
+        message: "The operation failed a safety check.",
+        retryable: false,
+      });
+      expect(`${String(error)}${JSON.stringify(error)}`).not.toContain(
+        databasePath,
+      );
+      expect(`${String(error)}${JSON.stringify(error)}`).not.toContain("EPERM");
+    } finally {
+      unlinkSync(databasePath);
+      renameSync(heldDatabasePath, databasePath);
+    }
+  });
+
   function openStore(): PapercutStore {
     const store = openSqliteStore(databasePath);
     stores.push(store);
@@ -256,31 +388,116 @@ function readMigrationRows(path: string): MigrationRow[] {
   }
 }
 
-function readLogicalSchemaSnapshot(path: string): unknown {
+type DatabaseFileState = {
+  name: string;
+  mode: number;
+  size: number;
+  sha256: string;
+};
+
+type DatabaseSnapshot = {
+  logical: unknown;
+  directoryMode: number;
+  files: readonly DatabaseFileState[];
+};
+
+function readLogicalSchemaSnapshot(path: string): DatabaseSnapshot {
   const database = new Database(path, { strict: true });
+  let logicalSnapshot: unknown;
   try {
-    return {
-      migrations: database
-        .query<MigrationRow, []>(`SELECT
-          version,
-          name,
-          checksum,
-          applied_at_ms AS appliedAtMs
-        FROM schema_migrations
-        ORDER BY version`)
-        .all(),
+    const hasMigrations = hasTable(database, "schema_migrations");
+    logicalSnapshot = {
+      migrations: hasMigrations
+        ? database
+            .query<MigrationRow, []>(`SELECT
+              version,
+              name,
+              checksum,
+              applied_at_ms AS appliedAtMs
+            FROM schema_migrations
+            ORDER BY version`)
+            .all()
+        : null,
       schema: database
         .query<{ name: string; sql: string | null; type: string }, []>(
           "SELECT type, name, sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
         )
         .all(),
+      journalMode: database
+        .query<{ journal_mode: string }, []>("PRAGMA journal_mode")
+        .get(),
       userVersion: database
         .query<{ user_version: number }, []>("PRAGMA user_version")
         .get(),
+      papercutMarkers: hasTable(database, "papercuts")
+        ? database
+            .query<{ body: string; id: string }, []>(
+              "SELECT id, body FROM papercuts ORDER BY id",
+            )
+            .all()
+        : null,
+      futureMarkers: hasTable(database, "future_marker")
+        ? database
+            .query<{ value: string }, []>(
+              "SELECT value FROM future_marker ORDER BY value",
+            )
+            .all()
+        : null,
+      rollbackMarkers: hasTable(database, "rollback_marker")
+        ? database
+            .query<{ value: string }, []>(
+              "SELECT value FROM rollback_marker ORDER BY value",
+            )
+            .all()
+        : null,
     };
   } finally {
     database.close();
   }
+
+  return {
+    logical: logicalSnapshot,
+    directoryMode: fileMode(join(path, "..")),
+    files: databaseFileSnapshot(path),
+  };
+}
+
+function hasTable(database: Database, name: string): boolean {
+  return (
+    database
+      .query<{ present: number }, [string]>(
+        "SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = ?",
+      )
+      .get(name) !== null
+  );
+}
+
+function databaseFileSnapshot(path: string): DatabaseFileState[] {
+  const directory = join(path, "..");
+  const databaseName = path.slice(directory.length + 1);
+
+  return readdirSync(directory)
+    .filter(
+      (name) => name === databaseName || name.startsWith(`${databaseName}-`),
+    )
+    .sort()
+    .map((name) => {
+      const filePath = join(directory, name);
+      const bytes = readFileSync(filePath);
+      return {
+        name,
+        mode: fileMode(filePath),
+        size: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      };
+    });
+}
+
+function withoutFileModes(snapshot: DatabaseSnapshot): unknown {
+  return {
+    ...snapshot,
+    files: snapshot.files.map(({ mode: _mode, ...file }) => file),
+  };
 }
 
 function captureOpenError(path: string): unknown {
@@ -302,6 +519,41 @@ function captureError(action: () => void): unknown {
   } catch (error) {
     return error;
   }
+}
+
+function createBusySnapshotError(path: string): unknown {
+  const reader = new Database(path, { create: true, strict: true });
+  const writer = new Database(path, { strict: true });
+
+  try {
+    reader.query("PRAGMA journal_mode = WAL").get();
+    reader.run("CREATE TABLE snapshot_items (id INTEGER PRIMARY KEY) STRICT");
+    reader.run("INSERT INTO snapshot_items DEFAULT VALUES");
+    reader.run("BEGIN");
+    reader.query("SELECT * FROM snapshot_items").all();
+    writer.run("INSERT INTO snapshot_items DEFAULT VALUES");
+
+    return captureError(() =>
+      reader.run("INSERT INTO snapshot_items DEFAULT VALUES")
+    );
+  } finally {
+    if (reader.inTransaction) reader.run("ROLLBACK");
+    reader.close();
+    writer.close();
+  }
+}
+
+function recordWhoseTagsThrow(error: unknown): Papercut {
+  const tags = {
+    toJSON(): never {
+      throw error;
+    },
+  } as unknown as Papercut["tags"];
+
+  return makePapercut({
+    id: "00000000-0000-4000-8000-000000000905",
+    tags,
+  });
 }
 
 function fileMode(path: string): number {

@@ -25,23 +25,23 @@ import {
 export { CURRENT_SCHEMA_VERSION } from "./migrations";
 
 type PapercutRow = {
-  id: string;
-  created_at_ms: number;
-  body: string;
-  source: string;
-  model: string | null;
-  category: string | null;
-  tags_json: string;
-  client_version: string;
-  repo_key: string | null;
-  repo_key_kind: string | null;
-  repo_name: string | null;
-  repo_root: string | null;
-  cwd_rel: string | null;
-  branch: string | null;
-  head: string | null;
-  redaction_count: number;
-  redaction_version: string;
+  id: unknown;
+  created_at_ms: unknown;
+  body: unknown;
+  source: unknown;
+  model: unknown;
+  category: unknown;
+  tags_json: unknown;
+  client_version: unknown;
+  repo_key: unknown;
+  repo_key_kind: unknown;
+  repo_name: unknown;
+  repo_root: unknown;
+  cwd_rel: unknown;
+  branch: unknown;
+  head: unknown;
+  redaction_count: unknown;
+  redaction_version: unknown;
 };
 
 type InsertParameters = {
@@ -123,10 +123,9 @@ const SELECT_PAPERCUT_COLUMNS = `SELECT
 FROM papercuts`;
 
 export function openSqliteStore(path: string): PapercutStore {
-  ensurePrivateDirectorySync(dirname(path));
-
   let database: Database | null = null;
   try {
+    ensurePrivateDirectory(path);
     database = new Database(path, { create: true, strict: true });
     configureConnection(database);
     enforceDatabaseModes(path);
@@ -135,7 +134,11 @@ export function openSqliteStore(path: string): PapercutStore {
 
     return createStore(database, path);
   } catch (error) {
-    database?.close();
+    try {
+      database?.close();
+    } catch {
+      // Preserve the original fixed error; never expose close diagnostics.
+    }
     throwSanitizedStoreError(error);
   }
 }
@@ -292,7 +295,7 @@ function checkWriteLock(database: Database): boolean {
 }
 
 function toInsertParameters(record: Papercut): InsertParameters {
-  return {
+  const parameters = {
     id: record.id,
     createdAtMs: record.createdAtMs,
     body: record.body,
@@ -311,57 +314,187 @@ function toInsertParameters(record: Papercut): InsertParameters {
     redactionCount: record.redactionCount,
     redactionVersion: record.redactionVersion,
   };
+
+  for (const key of Object.keys(parameters) as Array<keyof InsertParameters>) {
+    if (parameters[key] === undefined) delete parameters[key];
+  }
+
+  return parameters;
 }
 
 function rowToPapercut(row: PapercutRow): Papercut {
-  const parsedTags: unknown = JSON.parse(row.tags_json);
-  if (
-    !Array.isArray(parsedTags) ||
-    parsedTags.some((tag) => typeof tag !== "string")
-  ) {
-    throw new PapercutsError("internal_error");
-  }
-
-  let repo: RepoContext | null = null;
-  if (row.repo_key !== null) {
-    if (
-      row.repo_key_kind === null ||
-      row.repo_name === null ||
-      row.repo_root === null ||
-      row.cwd_rel === null
-    ) {
-      throw new PapercutsError("internal_error");
-    }
-
-    repo = {
-      key: row.repo_key,
-      keyKind: row.repo_key_kind as RepoKeyKind,
-      displayName: row.repo_name as ScreenedText,
-      root: row.repo_root as ScreenedText,
-      cwdRelative: row.cwd_rel as ScreenedText,
-      branch: row.branch as ScreenedText | null,
-      head: row.head as ScreenedText | null,
-    };
-  }
+  const id = requireMatchingString(row.id, UUID_V4_PATTERN);
+  const createdAtMs = requireSafeInteger(row.created_at_ms, 1);
+  const body = requireBoundedString(row.body, 1, 65_536) as ScreenedText;
+  const source = requireCaptureSource(row.source);
+  const model = requireNullableBoundedString(row.model, 256);
+  const category = requireNullableBoundedString(row.category, 64);
+  const tags = parseTags(row.tags_json);
+  const clientVersion = requireBoundedString(
+    row.client_version,
+    1,
+    Number.POSITIVE_INFINITY,
+  );
+  const repo = parseRepo(row);
+  const redactionCount = requireSafeInteger(row.redaction_count, 0);
+  const redactionVersion = requireBoundedString(
+    row.redaction_version,
+    1,
+    Number.POSITIVE_INFINITY,
+  );
 
   return {
-    id: row.id,
-    createdAtMs: row.created_at_ms,
-    body: row.body as ScreenedText,
-    source: row.source as CaptureSource,
-    model: row.model as ScreenedText | null,
-    category: row.category as ScreenedText | null,
-    tags: parsedTags as ScreenedText[],
-    clientVersion: row.client_version,
+    id,
+    createdAtMs,
+    body,
+    source,
+    model: model as ScreenedText | null,
+    category: category as ScreenedText | null,
+    tags,
+    clientVersion,
     repo,
-    redactionCount: row.redaction_count,
-    redactionVersion: row.redaction_version,
+    redactionCount,
+    redactionVersion,
   };
 }
 
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REPO_KEY_PATTERN = /^[0-9a-f]{64}$/i;
+const CAPTURE_SOURCES: ReadonlySet<string> = new Set([
+  "manual",
+  "codex",
+  "claude-code",
+  "generic",
+]);
+const REPO_KEY_KINDS: ReadonlySet<string> = new Set(["local", "remote"]);
+
+function parseRepo(row: PapercutRow): RepoContext | null {
+  const repoValues = [
+    row.repo_key,
+    row.repo_key_kind,
+    row.repo_name,
+    row.repo_root,
+    row.cwd_rel,
+    row.branch,
+    row.head,
+  ];
+  if (repoValues.every((value) => value === null)) return null;
+
+  const key = requireMatchingString(row.repo_key, REPO_KEY_PATTERN);
+  const keyKind = requireRepoKeyKind(row.repo_key_kind);
+  const displayName = requireString(row.repo_name) as ScreenedText;
+  const root = requireString(row.repo_root) as ScreenedText;
+  const cwdRelative = requireString(row.cwd_rel) as ScreenedText;
+  const branch = requireNullableString(row.branch) as ScreenedText | null;
+  const head = requireNullableString(row.head) as ScreenedText | null;
+
+  return {
+    key,
+    keyKind,
+    displayName,
+    root,
+    cwdRelative,
+    branch,
+    head,
+  };
+}
+
+function parseTags(value: unknown): readonly ScreenedText[] {
+  const serialized = requireString(value);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    throw new PapercutsError("internal_error");
+  }
+
+  if (!Array.isArray(parsed) || parsed.length > 16) {
+    throw new PapercutsError("internal_error");
+  }
+
+  return parsed.map(
+    (tag) => requireBoundedString(tag, 1, 64) as ScreenedText,
+  );
+}
+
+function requireCaptureSource(value: unknown): CaptureSource {
+  const source = requireString(value);
+  if (!CAPTURE_SOURCES.has(source)) {
+    throw new PapercutsError("internal_error");
+  }
+  return source as CaptureSource;
+}
+
+function requireRepoKeyKind(value: unknown): RepoKeyKind {
+  const keyKind = requireString(value);
+  if (!REPO_KEY_KINDS.has(keyKind)) {
+    throw new PapercutsError("internal_error");
+  }
+  return keyKind as RepoKeyKind;
+}
+
+function requireSafeInteger(value: unknown, minimum: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new PapercutsError("internal_error");
+  }
+  return value as number;
+}
+
+function requireMatchingString(value: unknown, pattern: RegExp): string {
+  const text = requireString(value);
+  if (!pattern.test(text)) throw new PapercutsError("internal_error");
+  return text;
+}
+
+function requireNullableBoundedString(
+  value: unknown,
+  maximumBytes: number,
+): string | null {
+  if (value === null) return null;
+  return requireBoundedString(value, 0, maximumBytes);
+}
+
+function requireNullableString(value: unknown): string | null {
+  if (value === null) return null;
+  return requireString(value);
+}
+
+function requireBoundedString(
+  value: unknown,
+  minimumBytes: number,
+  maximumBytes: number,
+): string {
+  const text = requireString(value);
+  const byteLength = new TextEncoder().encode(text).byteLength;
+  if (byteLength < minimumBytes || byteLength > maximumBytes) {
+    throw new PapercutsError("internal_error");
+  }
+  return text;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new PapercutsError("internal_error");
+  }
+  return value;
+}
+
 function enforceDatabaseModes(path: string): void {
-  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
-    if (existsSync(candidate)) ensurePrivateFileSync(candidate);
+  try {
+    for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(candidate)) ensurePrivateFileSync(candidate);
+    }
+  } catch {
+    throw new PapercutsError("safety_failure");
+  }
+}
+
+function ensurePrivateDirectory(path: string): void {
+  try {
+    ensurePrivateDirectorySync(dirname(path));
+  } catch {
+    throw new PapercutsError("safety_failure");
   }
 }
 
@@ -372,8 +505,25 @@ function throwSanitizedStoreError(error: unknown): never {
 }
 
 function isSqliteBusy(error: unknown): boolean {
-  if (!(error instanceof Error) || !("code" in error)) return false;
+  if (!(error instanceof Error)) return false;
 
-  const code = String((error as Error & { code?: unknown }).code);
-  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
+  if ("code" in error) {
+    const code = String((error as Error & { code?: unknown }).code);
+    if (
+      code === "SQLITE_BUSY" ||
+      code.startsWith("SQLITE_BUSY_") ||
+      code === "SQLITE_LOCKED" ||
+      code.startsWith("SQLITE_LOCKED_")
+    ) {
+      return true;
+    }
+  }
+
+  if (!("errno" in error)) return false;
+
+  const errno = (error as Error & { errno?: unknown }).errno;
+  if (typeof errno !== "number" || !Number.isInteger(errno)) return false;
+
+  const primaryResultCode = errno & 0xff;
+  return primaryResultCode === 5 || primaryResultCode === 6;
 }
