@@ -836,7 +836,7 @@ type JsonFailure = {
 
 Command `data` shapes are copied verbatim from the design's “Command data shapes” list; no command may invent extra payload fields. In particular, add maps internal `createdAtMs` to RFC 3339 UTC field `createdAt`; it does not serialize `CaptureReceipt` verbatim. JSON help returns `{topic, usage}` and JSON version returns `{version}`.
 
-- [ ] **Step 1: Write failing parser tests for the complete command surface**
+- [x] **Step 1: Write failing parser tests for the complete command surface**
 
 Cover every command and flag from the design, global flags before/after commands, conflicting positional/stdin input, source/model/category/tag validation, duration forms `m`, `h`, and `d`, list limit 1–1000 with default 50, repository defaults inside/outside Git, setup user default, and generic `--apply` rejection.
 
@@ -844,7 +844,7 @@ Run: `bun test test/cli/args.test.ts`
 
 Expected: FAIL because `args.ts` does not exist.
 
-- [ ] **Step 2: Implement dependency-free argument parsing**
+- [x] **Step 2: Implement dependency-free argument parsing**
 
 Return a discriminated command union. Help and version parsing must not resolve the data path or open SQLite. Expected validation failures are `PapercutsError` exit 2.
 
@@ -852,7 +852,7 @@ Run: `bun test test/cli/args.test.ts`
 
 Expected: all parser tests pass.
 
-- [ ] **Step 3: Write failing bounded-input and output-contract tests**
+- [x] **Step 3: Write failing bounded-input and output-contract tests**
 
 Use chunked streams to prove stdin stops at 65,537 bytes, decodes UTF-8 fatally, rejects NULs, and never echoes rejected bytes. Assert JSON success/error is exactly one object and newline with no ANSI; add success contains only the fixed `CaptureReceipt` fields. Assert list/stats/export include the fixed resolved-scope object. Assert human errors go to stderr and JSON handled errors leave stderr empty.
 
@@ -860,7 +860,7 @@ Run: `bun test test/cli/input.test.ts test/cli/output.test.ts`
 
 Expected: FAIL before input/output modules exist.
 
-- [ ] **Step 4: Implement bounded stdin and stable output envelopes**
+- [x] **Step 4: Implement bounded stdin and stable output envelopes**
 
 Use incremental byte counting before `TextDecoder` with `{ fatal: true }`. The JSON schema is `{version:1, ok, command, data?, warnings?, error?}`. Map sanitized errors to the stable exit codes from the design.
 
@@ -868,7 +868,7 @@ Run: `bun test test/cli/input.test.ts test/cli/output.test.ts`
 
 Expected: all input/output tests pass.
 
-- [ ] **Step 5: Write failing command-orchestration tests**
+- [x] **Step 5: Write failing command-orchestration tests**
 
 Inject a fake store factory, repository resolver, setup planner/applier, clock, and I/O. Cover add/list/stats/export/setup/doctor; current/all scope behavior; atomic output overwrite refusal and `--force`; setup preview zero writes and apply routing; and close-on-success/error. Use a counted `openStore` fake to prove SQLite is not opened for help, version, setup preview, empty input, NUL input, malformed UTF-8, oversized input, invalid source/model/category/tag, or generic `--apply`.
 
@@ -876,7 +876,7 @@ Run: `bun test test/cli/run.test.ts`
 
 Expected: FAIL because `run.ts` does not exist.
 
-- [ ] **Step 6: Implement command orchestration and the executable entrypoint**
+- [x] **Step 6: Implement command orchestration and the executable entrypoint**
 
 Resolve `PAPERCUTS_HOME` without reading `.env`. Route help, version, and setup preview before store initialization. Open the external store lazily for data commands. `src/index.ts` passes `Bun.argv.slice(2)` to `runCli` and exits with the returned code without printing unhandled payloads.
 
@@ -884,7 +884,7 @@ Run: `bun test test/cli/run.test.ts`
 
 Expected: all command tests pass.
 
-- [ ] **Step 7: Write failing doctor tests**
+- [x] **Step 7: Write failing doctor tests**
 
 Cover PATH discovery, CLI and Bun/compiled runtime version, external data path, directory/database mode and current owner versus expected owner, SQLite version, schema/integrity, write-lock availability, current Git attribution, adapter states and shadowing, and unavailable resources. Assert record bodies, raw remotes, environment values, and instruction content never appear. Assert the result is the fixed `{ok, checks}` structure from the design.
 
@@ -892,7 +892,7 @@ Run: `bun test test/doctor/checks.test.ts`
 
 Expected: FAIL because `checks.ts` does not exist.
 
-- [ ] **Step 8: Implement safe doctor checks**
+- [x] **Step 8: Implement safe doctor checks**
 
 Use `PapercutStore.health()` for SQLite version, schema, integrity, and cooperative write-lock status. Use filesystem metadata for mode/uid checks and report path names but never file contents. Each check returns `{name, status, message}` with a sanitized fixed-purpose message.
 
@@ -900,7 +900,7 @@ Run: `bun test test/doctor/checks.test.ts`
 
 Expected: all doctor tests pass.
 
-- [ ] **Step 9: Commit Task 6**
+- [x] **Step 9: Commit Task 6**
 
 Run: `bun test && bun run typecheck && bun run build`
 
