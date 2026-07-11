@@ -40,6 +40,27 @@ describe("managed setup markers", () => {
     });
   });
 
+  test("accepts exact standalone marker lines with each supported newline style", () => {
+    for (const newline of ["\n", "\r\n", "\r"] as const) {
+      const prefix = `before${newline}`;
+      const managed = `${BEGIN_MARKER}${newline}body${newline}${END_MARKER}`;
+      const input = `${prefix}${managed}${newline}after`;
+
+      expect(parseManagedBlock(input)).toEqual({
+        kind: "present",
+        start: prefix.length,
+        end: prefix.length + managed.length,
+        version: "1",
+      });
+    }
+  });
+
+  test("rejects exact markers embedded in surrounding text", () => {
+    expectSetupConflict(
+      `prefix ${BEGIN_MARKER}\nCANARY_DO_NOT_ECHO\n${END_MARKER} suffix`,
+    );
+  });
+
   test("recognizes an older well-formed version for upgrades", () => {
     const old = "<!-- papercuts:begin v0 -->\nold\n<!-- papercuts:end -->";
 
@@ -78,5 +99,38 @@ describe("managed setup markers", () => {
     expectSetupConflict(
       "<!-- papercuts:begin -->\nCANARY_DO_NOT_ECHO\n<!-- papercuts:end -->",
     );
+  });
+
+  test("rejects malformed whitespace and comment marker variants", () => {
+    for (const begin of [
+      ` ${BEGIN_MARKER}`,
+      `${BEGIN_MARKER} `,
+      "<!--papercuts:begin v1 -->",
+      "<!--  papercuts:begin v1 -->",
+      "<!-- papercuts:begin  v1 -->",
+      "<!-- papercuts :begin v1 -->",
+      "<!-- papercuts: begin v1 -->",
+      "<!-- PAPERCUTS:BEGIN v1 -->",
+      "<!-- papercuts-begin v1 -->",
+      "<!-- papercuts:begin v1-->",
+      "<!-- prefix papercuts:begin v1 -->",
+    ]) {
+      expectSetupConflict(
+        `${begin}\nCANARY_DO_NOT_ECHO\n${END_MARKER}`,
+      );
+    }
+
+    expectSetupConflict(
+      `${BEGIN_MARKER}\nCANARY_DO_NOT_ECHO\n${END_MARKER} trailing`,
+    );
+
+    for (const [begin, end] of [
+      ["<!-- PAPERCUTS:BEGIN v1 -->", "<!-- PAPERCUTS:END -->"],
+      ["<!-- papercuts : begin v1 -->", "<!-- papercuts : end -->"],
+      ["<!-- papercuts-begin v1 -->", "<!-- papercuts-end -->"],
+      ["<!-- papercuts begin v1 -->", "<!-- papercuts end -->"],
+    ] as const) {
+      expectSetupConflict(`${begin}\nCANARY_DO_NOT_ECHO\n${end}`);
+    }
   });
 });

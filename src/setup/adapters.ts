@@ -28,6 +28,13 @@ export async function planSetup(request: SetupRequest): Promise<SetupPlan> {
   try {
     const canonicalScopeRoot = await resolveScopeRoot(request);
 
+    if (
+      !(request.harness === "codex" && request.scope.kind === "user") &&
+      !(await isExistingDirectory(canonicalScopeRoot))
+    ) {
+      return conflictPlan(request, canonicalScopeRoot);
+    }
+
     if (request.harness === "generic") {
       return {
         harness: request.harness,
@@ -42,7 +49,7 @@ export async function planSetup(request: SetupRequest): Promise<SetupPlan> {
 
     const targetPath =
       request.harness === "codex"
-        ? await resolveCodexTarget(canonicalScopeRoot)
+        ? await resolveActiveCodexTarget(canonicalScopeRoot)
         : resolveClaudeTarget(canonicalScopeRoot);
     const snapshot = await readTarget(canonicalScopeRoot, targetPath);
 
@@ -66,6 +73,19 @@ export async function planSetup(request: SetupRequest): Promise<SetupPlan> {
   } catch (error) {
     if (error instanceof PapercutsError) {
       throw error;
+    }
+
+    throw new PapercutsError("setup_conflict");
+  }
+}
+
+async function isExistingDirectory(path: string): Promise<boolean> {
+  try {
+    const status = await lstat(path);
+    return status.isDirectory() && !status.isSymbolicLink();
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return false;
     }
 
     throw new PapercutsError("setup_conflict");
@@ -111,7 +131,9 @@ async function resolveScopeRoot(request: SetupRequest): Promise<string> {
   }
 }
 
-async function resolveCodexTarget(canonicalScopeRoot: string): Promise<string> {
+export async function resolveActiveCodexTarget(
+  canonicalScopeRoot: string,
+): Promise<string> {
   const overridePath = join(canonicalScopeRoot, "AGENTS.override.md");
   const override = await readTarget(canonicalScopeRoot, overridePath);
 
@@ -158,7 +180,10 @@ async function readTarget(
       let content: string;
 
       try {
-        content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        content = new TextDecoder("utf-8", {
+          fatal: true,
+          ignoreBOM: true,
+        }).decode(bytes);
       } catch {
         return { kind: "unsafe" };
       }
@@ -226,6 +251,10 @@ function buildFilePlan(input: {
   const blockIsCurrent = currentBlock === desiredBlock;
   const fileIsEntirelyManaged =
     parsed.start === 0 && parsed.end === content.length;
+
+  if (parsed.version !== "0" && parsed.version !== "1") {
+    return conflictPlan(request, canonicalScopeRoot);
+  }
 
   if (parsed.version === "1" && !blockIsCurrent) {
     return conflictPlan(request, canonicalScopeRoot);

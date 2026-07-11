@@ -23,6 +23,7 @@ import {
 import { PapercutsError } from "../domain/errors";
 import { sha256Hex } from "../platform/hash";
 import { assertPathHasNoSymlinkComponents } from "../platform/private-files";
+import { resolveActiveCodexTarget } from "./adapters";
 import { renderClaudeInstructions, renderCodexInstructions } from "./content";
 import { parseManagedBlock } from "./markers";
 import type { PlannedFileMutation, SetupPlan } from "./types";
@@ -34,6 +35,11 @@ export interface ApplySetupOptions {
     mutation: PlannedFileMutation;
     tempPath: string;
   }): void | Promise<void>;
+  beforeFinalMutation?(context: {
+    mutation: PlannedFileMutation;
+    tempPath?: string;
+  }): void | Promise<void>;
+  syncDirectory?(path: string): Promise<void>;
 }
 
 interface Preimage {
@@ -57,11 +63,15 @@ export async function applySetup(
       throw new PapercutsError("setup_conflict");
     }
 
+    if (plan.harness === "generic") {
+      throw new PapercutsError("setup_conflict");
+    }
+
     if (plan.mutations.length === 0) {
       return;
     }
 
-    if (plan.harness === "generic") {
+    if (plan.mutations.length !== 1) {
       throw new PapercutsError("setup_conflict");
     }
 
@@ -82,7 +92,9 @@ export async function applySetup(
 
     createdScopeDirectories = await ensureCanonicalScopeRoot(
       plan.canonicalScopeRoot,
-      plan.action === "install" &&
+      plan.harness === "codex" &&
+        plan.scope.kind === "user" &&
+        plan.action === "install" &&
         plan.mutations.every((mutation) => mutation.nextContent !== null),
     );
     const canonicalScopeRoot = await validateCanonicalScopeRoot(
@@ -212,11 +224,13 @@ async function applyMutation(
 
   try {
     await assertSafePath(canonicalScopeRoot, targetPath);
+    await assertCodexTargetRemainsActive(plan, canonicalScopeRoot, targetPath);
     const preimage = await readPreimage(canonicalScopeRoot, targetPath);
     verifyExpectedPreimage(preimage, mutation.expectedSha256);
     validateMutationSemantics(plan, mutation, preimage);
 
     if (mutation.nextContent === null) {
+      await options.beforeFinalMutation?.({ mutation });
       await assertSafePath(canonicalScopeRoot, targetPath);
       const finalPreimage = await readPreimage(
         canonicalScopeRoot,
@@ -224,12 +238,18 @@ async function applyMutation(
       );
       verifyExpectedPreimage(finalPreimage, mutation.expectedSha256);
       validateEntirelyManagedFile(plan, finalPreimage);
+      await assertCodexTargetRemainsActive(
+        plan,
+        canonicalScopeRoot,
+        targetPath,
+      );
       await unlink(targetPath);
-      await syncDirectory(dirname(targetPath));
+      await syncCommittedDirectory(dirname(targetPath), options);
       return;
     }
 
     await replaceWithAtomicRename({
+      plan,
       canonicalScopeRoot,
       targetPath,
       mutation,
@@ -247,6 +267,7 @@ async function applyMutation(
 }
 
 async function replaceWithAtomicRename(input: {
+  plan: SetupPlan;
   canonicalScopeRoot: string;
   targetPath: string;
   mutation: PlannedFileMutation;
@@ -282,6 +303,10 @@ async function replaceWithAtomicRename(input: {
       mutation: input.mutation,
       tempPath,
     });
+    await input.options.beforeFinalMutation?.({
+      mutation: input.mutation,
+      tempPath,
+    });
 
     await assertSafePath(input.canonicalScopeRoot, input.targetPath);
     const finalPreimage = await readPreimage(
@@ -292,6 +317,12 @@ async function replaceWithAtomicRename(input: {
 
     await tempHandle.close();
     tempHandle = undefined;
+    await assertSafePath(input.canonicalScopeRoot, input.targetPath);
+    await assertCodexTargetRemainsActive(
+      input.plan,
+      input.canonicalScopeRoot,
+      input.targetPath,
+    );
 
     // This is cooperative serialization plus a final preimage check. Portable
     // filesystem APIs cannot compare-and-swap against an unrelated editor in
@@ -299,7 +330,7 @@ async function replaceWithAtomicRename(input: {
     await rename(tempPath, input.targetPath);
     tempPath = undefined;
     mutationCommitted = true;
-    await syncDirectory(parentPath);
+    await syncCommittedDirectory(parentPath, input.options);
   } finally {
     await tempHandle?.close().catch(() => undefined);
 
@@ -530,6 +561,10 @@ function validateExistingManagedBlock(
 ): void {
   const existingBlock = current.slice(parsed.start, parsed.end);
 
+  if (parsed.version !== "0" && parsed.version !== "1") {
+    throw new PapercutsError("setup_conflict");
+  }
+
   if (parsed.version === "1" && existingBlock !== desiredBlock) {
     throw new PapercutsError("setup_conflict");
   }
@@ -719,9 +754,38 @@ async function syncDirectory(path: string): Promise<void> {
   }
 }
 
+async function syncCommittedDirectory(
+  path: string,
+  options: ApplySetupOptions,
+): Promise<void> {
+  try {
+    await (options.syncDirectory ?? syncDirectory)(path);
+  } catch {
+    // Rename/unlink has already committed. Returning success keeps the reported
+    // result aligned with the visible filesystem state when durability sync is
+    // unavailable; pre-commit failures still remain sanitized conflicts.
+  }
+}
+
+async function assertCodexTargetRemainsActive(
+  plan: SetupPlan,
+  canonicalScopeRoot: string,
+  targetPath: string,
+): Promise<void> {
+  if (
+    plan.harness === "codex" &&
+    (await resolveActiveCodexTarget(canonicalScopeRoot)) !== targetPath
+  ) {
+    throw new PapercutsError("setup_conflict");
+  }
+}
+
 function decodeUtf8(bytes: Uint8Array): string {
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
   } catch {
     throw new PapercutsError("setup_conflict");
   }

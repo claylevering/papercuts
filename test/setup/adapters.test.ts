@@ -277,6 +277,32 @@ describe("setup adapter planning", () => {
     }
   });
 
+  test("treats unknown and future managed block versions as conflicts", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const target = join(fixture.repo, "AGENTS.md");
+
+      for (const version of ["2", "999", "future"] as const) {
+        await writeFile(
+          target,
+          `<!-- papercuts:begin v${version} -->\nmanaged\n<!-- papercuts:end -->`,
+        );
+        const plan = await planSetup({
+          harness: "codex",
+          action: "install",
+          scope: { kind: "repo", root: fixture.repo },
+          home: fixture.home,
+        });
+
+        expect(plan.state).toBe("conflict");
+        expect(plan.mutations).toEqual([]);
+      }
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
   test("does not overwrite unrelated content in Claude's owned target", async () => {
     const fixture = await createFixture();
 

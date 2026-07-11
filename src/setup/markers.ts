@@ -12,14 +12,18 @@ export type ManagedBlockParseResult =
 
 const BEGIN_MARKER_PATTERN =
   /<!-- papercuts:begin v([A-Za-z0-9][A-Za-z0-9._-]*) -->/g;
-const BEGIN_MARKER_PREFIX = "<!-- papercuts:begin";
-const END_MARKER_PREFIX = "<!-- papercuts:end";
+const MARKER_LIKE_PATTERN = /papercuts[ \t:._-]*(begin|end)\b/gi;
 
 export function parseManagedBlock(input: string): ManagedBlockParseResult {
   const begins = [...input.matchAll(BEGIN_MARKER_PATTERN)];
   const ends = allIndexesOf(input, END_MARKER);
-  const markerLikeBeginCount = countOccurrences(input, BEGIN_MARKER_PREFIX);
-  const markerLikeEndCount = countOccurrences(input, END_MARKER_PREFIX);
+  const markerLike = [...input.matchAll(MARKER_LIKE_PATTERN)];
+  const markerLikeBeginCount = markerLike.filter(
+    (match) => match[1]?.toLowerCase() === "begin",
+  ).length;
+  const markerLikeEndCount = markerLike.filter(
+    (match) => match[1]?.toLowerCase() === "end",
+  ).length;
 
   if (markerLikeBeginCount === 0 && markerLikeEndCount === 0) {
     return { kind: "absent" };
@@ -43,6 +47,16 @@ export function parseManagedBlock(input: string): ManagedBlockParseResult {
     begin.index === undefined ||
     endStart === undefined ||
     version === undefined ||
+    !isStandaloneMarkerLine(
+      input,
+      begin.index,
+      begin.index + begin[0].length,
+    ) ||
+    !isStandaloneMarkerLine(
+      input,
+      endStart,
+      endStart + END_MARKER.length,
+    ) ||
     endStart < begin.index + begin[0].length
   ) {
     throw new PapercutsError("setup_conflict");
@@ -54,6 +68,22 @@ export function parseManagedBlock(input: string): ManagedBlockParseResult {
     end: endStart + END_MARKER.length,
     version,
   };
+}
+
+function isStandaloneMarkerLine(
+  input: string,
+  start: number,
+  end: number,
+): boolean {
+  const startsLine =
+    start === 0 ||
+    (start === 1 && input.charCodeAt(0) === 0xfeff) ||
+    input[start - 1] === "\n" ||
+    input[start - 1] === "\r";
+  const endsLine =
+    end === input.length || input[end] === "\n" || input[end] === "\r";
+
+  return startsLine && endsLine;
 }
 
 function allIndexesOf(input: string, needle: string): number[] {
@@ -72,8 +102,4 @@ function allIndexesOf(input: string, needle: string): number[] {
   }
 
   return indexes;
-}
-
-function countOccurrences(input: string, needle: string): number {
-  return allIndexesOf(input, needle).length;
 }

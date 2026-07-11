@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -17,7 +18,10 @@ import { PapercutsError } from "../../src/domain/errors";
 import { sha256Hex } from "../../src/platform/hash";
 import { planSetup } from "../../src/setup/adapters";
 import { applySetup } from "../../src/setup/applier";
-import { renderClaudeInstructions } from "../../src/setup/content";
+import {
+  renderClaudeInstructions,
+  renderCodexInstructions,
+} from "../../src/setup/content";
 import type { SetupPlan } from "../../src/setup/types";
 
 interface Fixture {
@@ -95,6 +99,25 @@ async function setupArtifacts(root: string): Promise<readonly string[]> {
 }
 
 describe("safe setup application", () => {
+  test("rejects a snippet-only generic plan when apply is requested", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const plan = await planSetup({
+        harness: "generic",
+        action: "install",
+        scope: { kind: "user" },
+        home: fixture.home,
+      });
+
+      expect(plan.mutations).toEqual([]);
+      await expectConflict(applySetup(plan));
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
   test("creates a missing default CODEX_HOME only during apply", async () => {
     const fixture = await createFixture();
 
@@ -174,6 +197,48 @@ describe("safe setup application", () => {
     }
   });
 
+  test("does not create a missing repository scope root", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const missingRepo = join(fixture.base, "missing-repository");
+      const plan = await planSetup({
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: missingRepo },
+        home: fixture.home,
+      });
+
+      expect(plan.state).toBe("conflict");
+      expect(plan.mutations).toEqual([]);
+      await expectConflict(applySetup(plan));
+      await expectMissing(missingRepo);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("does not create a missing Claude user home root", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const missingHome = join(fixture.base, "missing-claude-home");
+      const plan = await planSetup({
+        harness: "claude-code",
+        action: "install",
+        scope: { kind: "user" },
+        home: missingHome,
+      });
+
+      expect(plan.state).toBe("conflict");
+      expect(plan.mutations).toEqual([]);
+      await expectConflict(applySetup(plan));
+      await expectMissing(missingHome);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
   test("first apply creates private directories and reapply is a no-op", async () => {
     const fixture = await createFixture();
 
@@ -239,6 +304,158 @@ describe("safe setup application", () => {
 
       expect(await readFile(target, "utf8")).toBe(original);
       expect((await lstat(target)).mode & 0o777).toBe(0o640);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves a leading UTF-8 BOM byte-exactly across planning, apply, and undo", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const target = join(fixture.repo, "AGENTS.md");
+      const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+      const original = Buffer.concat([
+        bom,
+        Buffer.from("# Existing\r\nKeep this exact final line", "utf8"),
+      ]);
+      await writeFile(target, original, { mode: 0o640 });
+      await chmod(target, 0o640);
+      const request = {
+        harness: "codex" as const,
+        action: "install" as const,
+        scope: { kind: "repo" as const, root: fixture.repo },
+        home: fixture.home,
+      };
+
+      const installPlan = await planSetup(request);
+      expect(
+        installPlan.mutations[0]?.nextContent?.startsWith("\uFEFF"),
+      ).toBeTrue();
+      await applySetup(installPlan);
+      const installed = await readFile(target);
+      expect(installed.subarray(0, original.length)).toEqual(original);
+      expect((await lstat(target)).mode & 0o777).toBe(0o640);
+
+      const removePlan = await planSetup({ ...request, action: "remove" });
+      await applySetup(removePlan);
+      expect(await readFile(target)).toEqual(original);
+      expect((await lstat(target)).mode & 0o777).toBe(0o640);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects Codex precedence drift to a new override before apply", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const mainPath = join(fixture.repo, "AGENTS.md");
+      const overridePath = join(fixture.repo, "AGENTS.override.md");
+      const main = "# main guidance\n";
+      const override = "# newly active override\n";
+      await writeFile(mainPath, main);
+      const plan = await planSetup({
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: fixture.repo },
+        home: fixture.home,
+      });
+      await writeFile(overridePath, override);
+
+      await expectConflict(applySetup(plan));
+      expect(await readFile(mainPath, "utf8")).toBe(main);
+      expect(await readFile(overridePath, "utf8")).toBe(override);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects Codex precedence drift to a new override before rename", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const mainPath = join(fixture.repo, "AGENTS.md");
+      const overridePath = join(fixture.repo, "AGENTS.override.md");
+      const main = "# main guidance\n";
+      const override = "# active during final check\n";
+      await writeFile(mainPath, main);
+      const plan = await planSetup({
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: fixture.repo },
+        home: fixture.home,
+      });
+
+      await expectConflict(
+        applySetup(plan, {
+          afterTempFileFlush: async () => {
+            await writeFile(overridePath, override);
+          },
+        }),
+      );
+
+      expect(await readFile(mainPath, "utf8")).toBe(main);
+      expect(await readFile(overridePath, "utf8")).toBe(override);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects Codex precedence drift from override back to AGENTS.md", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const mainPath = join(fixture.repo, "AGENTS.md");
+      const overridePath = join(fixture.repo, "AGENTS.override.md");
+      const main = "# fallback remains untouched\n";
+      await writeFile(mainPath, main);
+      await writeFile(overridePath, "# initially active override\n");
+      const plan = await planSetup({
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: fixture.repo },
+        home: fixture.home,
+      });
+      await writeFile(overridePath, "\n");
+
+      await expectConflict(applySetup(plan));
+      expect(await readFile(mainPath, "utf8")).toBe(main);
+      expect(await readFile(overridePath, "utf8")).toBe("\n");
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rechecks Codex precedence immediately before deleting a managed file", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const mainPath = join(fixture.repo, "AGENTS.md");
+      const overridePath = join(fixture.repo, "AGENTS.override.md");
+      await writeFile(mainPath, renderCodexInstructions());
+      const plan = await planSetup({
+        harness: "codex",
+        action: "remove",
+        scope: { kind: "repo", root: fixture.repo },
+        home: fixture.home,
+      });
+
+      await expectConflict(
+        applySetup(plan, {
+          beforeFinalMutation: async () => {
+            await writeFile(overridePath, "# now active\n");
+          },
+        }),
+      );
+
+      expect(await readFile(mainPath, "utf8")).toBe(
+        renderCodexInstructions(),
+      );
+      expect(await readFile(overridePath, "utf8")).toBe("# now active\n");
       expect(await setupArtifacts(fixture.base)).toEqual([]);
     } finally {
       await rm(fixture.base, { recursive: true, force: true });
@@ -409,6 +626,130 @@ describe("safe setup application", () => {
       };
       await expectConflict(applySetup(escapedPlan));
       await expectMissing(escapedTarget);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an unknown managed block version during semantic revalidation", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const root = await realpath(fixture.repo);
+      const target = join(root, "AGENTS.md");
+      const future =
+        "<!-- papercuts:begin v2 -->\nfuture managed content\n<!-- papercuts:end -->";
+      await writeFile(target, future);
+      const plan: SetupPlan = {
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: fixture.repo },
+        canonicalScopeRoot: root,
+        state: "outdated",
+        mutations: [
+          {
+            path: target,
+            expectedSha256: sha256Hex(future),
+            nextContent: renderCodexInstructions(),
+            createMode: 0o600,
+            managedDiff: [],
+          },
+        ],
+      };
+
+      await expectConflict(applySetup(plan));
+      expect(await readFile(target, "utf8")).toBe(future);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a multi-mutation v1 plan before writing any target", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const root = await realpath(fixture.repo);
+      const first = join(root, "AGENTS.md");
+      const second = join(root, "SECOND.md");
+      const plan: SetupPlan = {
+        harness: "codex",
+        action: "install",
+        scope: { kind: "repo", root: fixture.repo },
+        canonicalScopeRoot: root,
+        state: "absent",
+        mutations: [first, second].map((path) => ({
+          path,
+          expectedSha256: null,
+          nextContent: renderCodexInstructions(),
+          createMode: 0o600,
+          managedDiff: [],
+        })),
+      };
+
+      await expectConflict(applySetup(plan));
+      await expectMissing(first);
+      await expectMissing(second);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("reports success after a post-rename directory sync failure", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const plan = await planSetup({
+        harness: "claude-code",
+        action: "install",
+        scope: { kind: "user" },
+        home: fixture.home,
+      });
+      const target = plan.mutations[0]!.path;
+      let syncAttempted = false;
+
+      await applySetup(plan, {
+        syncDirectory: async () => {
+          syncAttempted = true;
+          throw new Error("CANARY_DO_NOT_ECHO injected directory sync failure");
+        },
+      });
+
+      expect(syncAttempted).toBeTrue();
+      expect(await readFile(target, "utf8")).toBe(renderClaudeInstructions());
+      expect((await lstat(target)).mode & 0o777).toBe(0o600);
+      expect(await setupArtifacts(fixture.base)).toEqual([]);
+    } finally {
+      await rm(fixture.base, { recursive: true, force: true });
+    }
+  });
+
+  test("reports success after a post-delete directory sync failure", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const target = join(fixture.repo, ".claude", "rules", "papercuts.md");
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, renderClaudeInstructions(), { mode: 0o600 });
+      const plan = await planSetup({
+        harness: "claude-code",
+        action: "remove",
+        scope: { kind: "repo", root: fixture.repo },
+        home: fixture.home,
+      });
+      let syncAttempted = false;
+
+      await applySetup(plan, {
+        syncDirectory: async () => {
+          syncAttempted = true;
+          throw new Error("CANARY_DO_NOT_ECHO injected directory sync failure");
+        },
+      });
+
+      expect(syncAttempted).toBeTrue();
+      await expectMissing(target);
       expect(await setupArtifacts(fixture.base)).toEqual([]);
     } finally {
       await rm(fixture.base, { recursive: true, force: true });
