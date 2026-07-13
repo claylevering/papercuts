@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "papercuts-claxx",
+  "compatibility_date": "2026-07-13",
+  "workers_dev": false,
+  "assets": {
+    "directory": "./site"
+  },
+  "routes": [
+    {
+      "pattern": "papercuts.claxx.gg",
+      "custom_domain": true
+    }
+  ]
+}
