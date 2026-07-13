@@ -92,9 +92,9 @@ Verify the deployed site with the root page, the museum page, and a missing
 path (which should return `404`):
 
 ```bash
-curl -I https://papercuts.claxx.gg/
-curl -I https://papercuts.claxx.gg/museum.html
-curl -I https://papercuts.claxx.gg/does-not-exist
+curl -IL https://papercuts.claxx.gg/
+curl -IL https://papercuts.claxx.gg/museum.html
+curl -IL https://papercuts.claxx.gg/does-not-exist
 ```
 
 ## Standalone build and smoke test
