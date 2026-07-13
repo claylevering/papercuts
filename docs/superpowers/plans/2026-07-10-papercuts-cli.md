@@ -14,6 +14,12 @@
 **Planned at:** commit `841e34c`, 2026-07-10
 **Design source:** `docs/superpowers/specs/2026-07-10-papercuts-cli-design.md`
 
+**Delivery update (2026-07-13):** The completed v0.1.0 implementation is on
+`main` in the GitHub repository. Its static product site is deployed at
+[`papercuts.claxx.gg`](https://papercuts.claxx.gg); deployment details now
+live in the README and `wrangler.jsonc`. This plan's branch and local-only
+workflow notes below describe the original implementation process.
+
 ## Global Constraints
 
 - Runtime dependencies are zero unless a safety requirement cannot be met with Bun or Node-compatible built-ins.

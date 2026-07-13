@@ -10,6 +10,14 @@ Markdown.
 There is no daemon, no network component, no account system, and no cloud
 sync. Everything is local, everything is opt-in.
 
+## Project site
+
+The product site is live at [papercuts.claxx.gg](https://papercuts.claxx.gg).
+It is a static overview of the CLI, not a hosted application: it receives no
+papercut records and has no access to the local SQLite database. A deliberately
+more theatrical alternate presentation is available at
+[/museum.html](https://papercuts.claxx.gg/museum.html).
+
 ## What counts as a papercut
 
 A papercut is a **concise observation about friction**, not an accomplishment
@@ -63,6 +71,30 @@ the fastest loop while developing:
 
 ```bash
 bun src/index.ts add "..."
+```
+
+## Publishing the project site
+
+The static site source lives in [`site/`](site/). Its Cloudflare Worker asset
+configuration, including the `papercuts.claxx.gg` custom domain, is in
+[`wrangler.jsonc`](wrangler.jsonc). The CLI itself remains entirely local;
+deploying the site only uploads those static assets.
+
+After authenticating Wrangler to the intended Cloudflare account, preview and
+publish the site from the repository root:
+
+```bash
+wrangler deploy --dry-run
+wrangler deploy
+```
+
+Verify the deployed site with the root page, the museum page, and a missing
+path (which should return `404`):
+
+```bash
+curl -I https://papercuts.claxx.gg/
+curl -I https://papercuts.claxx.gg/museum.html
+curl -I https://papercuts.claxx.gg/does-not-exist
 ```
 
 ## Standalone build and smoke test
