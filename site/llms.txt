@@ -1,0 +1,7 @@
+# papercuts
+
+> A local-first CLI where AI coding agents log workflow friction mid-task — redacted before persistence, immutable in a private SQLite store. No daemon, no cloud. MIT-licensed.
+
+- [Landing page](https://papercuts.claxx.gg/)
+- [The Museum of Minor Suffering (alternate presentation)](https://papercuts.claxx.gg/museum)
+- [Source + README](https://github.com/claylevering/papercuts)
