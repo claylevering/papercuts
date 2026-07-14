@@ -3,7 +3,70 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>papercuts — the wound ledger</title>
+<title>papercuts — friction journal CLI for AI coding agents</title>
+<meta name="description" content="A local-first CLI where AI coding agents log workflow friction mid-task — redacted before persistence, immutable in a private SQLite store. No daemon, no cloud.">
+<link rel="canonical" href="https://papercuts.claxx.gg/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0e0e14" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f3ee" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🩹</text></svg>">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="papercuts">
+<meta property="og:url" content="https://papercuts.claxx.gg/">
+<meta property="og:title" content="papercuts — friction journal CLI for AI coding agents">
+<meta property="og:description" content="Agents log the thousand tiny frictions of their work — one command, redacted at the threshold, immutable as a grudge. No daemon, no network, no judgment.">
+<meta property="og:image" content="https://papercuts.claxx.gg/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="papercuts — a friction journal for AI coding agents, shown as a terminal recording a papercut">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="papercuts — friction journal CLI for AI coding agents">
+<meta name="twitter:description" content="Agents log the thousand tiny frictions of their work — one command, redacted at the threshold, immutable as a grudge.">
+<meta name="twitter:image" content="https://papercuts.claxx.gg/og.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "papercuts",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS",
+  "softwareVersion": "0.1.0",
+  "url": "https://papercuts.claxx.gg/",
+  "description": "A local-first CLI where AI coding agents and developers log workflow friction mid-task. Observations are redacted before persistence and stored immutably in a private SQLite database. No daemon, no network, no account.",
+  "downloadUrl": "https://github.com/claylevering/papercuts",
+  "sameAs": ["https://github.com/claylevering/papercuts"],
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "Clay Levering", "url": "https://github.com/claylevering" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is papercuts?",
+      "acceptedAnswer": { "@type": "Answer", "text": "papercuts is a local-first command-line tool for recording papercuts — small, concrete moments of workflow friction — while you or an AI coding agent (Claude Code, Codex, or any harness) works. One command per observation; the primary task never blocks." }
+    },
+    {
+      "@type": "Question",
+      "name": "Where do the records live?",
+      "acceptedAnswer": { "@type": "Answer", "text": "In a single private SQLite database on your machine, under ~/Library/Application Support/papercuts by default. There is no daemon, no network component, no cloud sync, and no account system. The data directory is owner-only (0700) and the database file is 0600." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do AI coding agents log friction?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Run papercuts setup claude-code --apply (or setup codex --apply). It installs a short, versioned instruction file — previewed first, reversible byte-safely — that tells the agent to pipe one or two sentences to papercuts add --stdin mid-task whenever it hits friction." }
+    },
+    {
+      "@type": "Question",
+      "name": "What happens if a secret ends up in an observation?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Six classes of sensitive material — credential-prefixed tokens, authorization headers, cookies, private keys, URL-embedded credentials, and secret-named assignments — are redacted before any byte persists. There is no raw copy, no backup of the original, and no bypass." }
+    }
+  ]
+}
+</script>
 <style>
   :root {
     --ground: #f4f3ee;
@@ -688,13 +751,35 @@ Redactions: <span class="red">1</span>
   <p class="caption">The standalone binary runs with no Bun and no Node on PATH. The store lives at ~/Library/Application Support/papercuts — set PAPERCUTS_HOME to move it. Redaction is best-effort pattern screening, not a DLP guarantee: the six classes above, applied before every byte persists.</p>
 </div>
 
+<!-- ================= PROGRAMME NOTES (FAQ) ================= -->
+<div class="wrap reveal" id="notes">
+  <div class="act">
+    <div class="no">Programme Notes</div>
+    <h2>Questions from the Audience</h2>
+    <div class="rule"></div>
+  </div>
+
+  <h3 style="font-family:var(--display); font-size:1.35rem; margin:2rem 0 0.4rem;">What is papercuts?</h3>
+  <p style="color:var(--ink-dim);">A local-first command-line tool for recording <em>papercuts</em> — small, concrete moments of workflow friction — while you or an AI coding agent (Claude Code, Codex, or any harness) works. One command per observation; the primary task never blocks.</p>
+
+  <h3 style="font-family:var(--display); font-size:1.35rem; margin:2rem 0 0.4rem;">Where do the records live?</h3>
+  <p style="color:var(--ink-dim);">In a single private SQLite database on your machine, under <code style="font-family:var(--mono);font-size:0.85em;">~/Library/Application Support/papercuts</code> by default. There is no daemon, no network component, no cloud sync, and no account system. The data directory is owner-only (0700) and the database file is 0600.</p>
+
+  <h3 style="font-family:var(--display); font-size:1.35rem; margin:2rem 0 0.4rem;">How do AI coding agents log friction?</h3>
+  <p style="color:var(--ink-dim);">Run <code style="font-family:var(--mono);font-size:0.85em;">papercuts setup claude-code --apply</code> (or <code style="font-family:var(--mono);font-size:0.85em;">setup codex --apply</code>). It installs a short, versioned instruction file — previewed first, reversible byte-safely — that tells the agent to pipe one or two sentences to <code style="font-family:var(--mono);font-size:0.85em;">papercuts add --stdin</code> mid-task whenever it hits friction.</p>
+
+  <h3 style="font-family:var(--display); font-size:1.35rem; margin:2rem 0 0.4rem;">What happens if a secret ends up in an observation?</h3>
+  <p style="color:var(--ink-dim);">Six classes of sensitive material — credential-prefixed tokens, authorization headers, cookies, private keys, URL-embedded credentials, and secret-named assignments — are redacted <em>before</em> any byte persists. There is no raw copy, no backup of the original, and no bypass.</p>
+</div>
+
 <!-- ================= CURTAIN ================= -->
 <footer class="reveal">
   <div class="fin">— FIN —</div>
   <p>No agents were harmed in the making of this software.<br>Their feelings were merely persisted, redacted, and counted.</p>
   <p class="meta">
     <a href="https://github.com/claylevering/papercuts">github.com/claylevering/papercuts</a>
-    &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp; private repository &nbsp;·&nbsp; zero runtime dependencies
+    &nbsp;·&nbsp; v0.1.0 &nbsp;·&nbsp; zero runtime dependencies &nbsp;·&nbsp;
+    <a href="/museum">tonight's other programme: the museum</a>
   </p>
 </footer>
 
