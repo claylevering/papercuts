@@ -8,7 +8,7 @@ import { applySetup } from "./setup/applier";
 import type { SetupPlan } from "./setup/types";
 import { openSqliteStore } from "./storage/sqlite-store";
 
-const CLIENT_VERSION = "0.1.0";
+const CLIENT_VERSION = "0.1.1";
 
 function buildEnvironment(): CliEnvironment {
   const papercutsHome = process.env["PAPERCUTS_HOME"];

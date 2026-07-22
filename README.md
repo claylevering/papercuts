@@ -107,7 +107,7 @@ with Bun and Node both absent from `PATH`:
 ```bash
 bun run build
 env -i HOME="$HOME" PATH="/usr/bin:/bin" PAPERCUTS_HOME="$(mktemp -d)" ./dist/papercuts --version
-# 0.1.0
+# 0.1.1
 ```
 
 If that prints the version cleanly, the binary is self-contained and ready
@@ -470,7 +470,7 @@ when every check is at least a warning, `1` if any check is an error.
 ```bash
 $ papercuts doctor
 [warn] path: The papercuts executable was not found on PATH; add it or call it by absolute path.
-[ok] cli-version: papercuts 0.1.0
+[ok] cli-version: papercuts 0.1.1
 [ok] runtime-version: runtime bun 1.3.4
 [ok] data-directory: The external data directory exists with owner-only permissions.
 [ok] database-file: The database exists with owner-only permissions.
@@ -500,7 +500,7 @@ $ papercuts add --help
 papercuts add TEXT | papercuts add --stdin [--source codex|claude-code|generic|manual] [--model MODEL] [--category CATEGORY] [--tag TAG ...]
 
 $ papercuts --version
-0.1.0
+0.1.1
 ```
 
 `--help` and `--version` never resolve the data path or open SQLite, so
