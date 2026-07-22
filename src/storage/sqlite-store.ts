@@ -122,6 +122,10 @@ const SELECT_PAPERCUT_COLUMNS = `SELECT
   redaction_version
 FROM papercuts`;
 
+const SET_RESOLVED_SQL = `UPDATE papercuts
+SET resolved_at_ms = $resolvedAtMs
+WHERE id = $id`;
+
 export function openSqliteStore(path: string): PapercutStore {
   let database: Database | null = null;
   try {
@@ -145,10 +149,21 @@ export function openSqliteStore(path: string): PapercutStore {
 
 function createStore(database: Database, path: string): PapercutStore {
   const insert = database.query<never, InsertParameters>(INSERT_PAPERCUT_SQL);
+  const setResolved = database.query<never, {
+    id: string;
+    resolvedAtMs: number | null;
+  }>(SET_RESOLVED_SQL);
   const appendRecord = database.transaction((record: Papercut): void => {
     insert.run(toInsertParameters(record));
     enforceDatabaseModes(path);
   });
+  const setResolution = database.transaction(
+    (id: string, resolvedAtMs: number | null): boolean => {
+      const result = setResolved.run({ id, resolvedAtMs });
+      if (result.changes > 0) enforceDatabaseModes(path);
+      return result.changes > 0;
+    },
+  );
 
   return {
     append(record: Papercut): void {
@@ -172,6 +187,9 @@ function createStore(database: Database, path: string): PapercutStore {
           clauses.push("created_at_ms >= ?");
           parameters.push(query.sinceMs);
         }
+        if (query.includeResolved !== true) {
+          clauses.push("resolved_at_ms IS NULL");
+        }
 
         const direction = query.order === "newest" ? "DESC" : "ASC";
         let sql = SELECT_PAPERCUT_COLUMNS;
@@ -186,6 +204,14 @@ function createStore(database: Database, path: string): PapercutStore {
           .query<PapercutRow, Array<string | number>>(sql)
           .all(...parameters)
           .map(rowToPapercut);
+      } catch (error) {
+        throwSanitizedStoreError(error);
+      }
+    },
+
+    setResolved(id: string, resolvedAtMs: number | null): boolean {
+      try {
+        return setResolution.immediate(id, resolvedAtMs);
       } catch (error) {
         throwSanitizedStoreError(error);
       }

@@ -4,6 +4,8 @@ import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { CURRENT_SCHEMA_VERSION } from "../../src/storage/migrations";
+
 /**
  * Black-box concurrency gate (plan Task 7, Step 2 / design release gate 2).
  *
@@ -16,7 +18,7 @@ import { join, resolve } from "node:path";
  * directory, so records are unscoped and deterministic.
  *
  * The gate asserts: all fifty records persist (no loss, no partial write, no
- * duplicate body), the schema is version 1, database/WAL/SHM are owner-only
+ * duplicate body), the schema is current, database/WAL/SHM are owner-only
  * `0600` with a `0700` data directory, `PRAGMA integrity_check` returns "ok",
  * and no invocation ever leaks an unhandled busy error onto stderr. A busy
  * outcome, if the CLI surfaces one, must be the design's *handled* retryable
@@ -241,7 +243,7 @@ test(
           .query("SELECT MAX(version) AS version FROM schema_migrations")
           .get(),
       )["version"];
-      expect(schemaVersion).toBe(1);
+      expect(schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
 
       const integrity = asObject(
         database.query("PRAGMA integrity_check").get(),

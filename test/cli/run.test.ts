@@ -94,6 +94,7 @@ interface HarnessOptions {
   repoError?: unknown;
   listResults?: readonly Papercut[];
   appendError?: unknown;
+  setResolvedResult?: boolean;
   plan?: SetupPlan;
   planError?: unknown;
   environment?: Partial<CliRuntime["environment"]>;
@@ -103,6 +104,7 @@ function createHarness(options: HarnessOptions = {}) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const appended: Papercut[] = [];
+  const resolutions: Array<{ id: string; resolvedAtMs: number | null }> = [];
   const queries: PapercutQuery[] = [];
   const openedPaths: string[] = [];
   const planRequests: SetupRequest[] = [];
@@ -121,6 +123,10 @@ function createHarness(options: HarnessOptions = {}) {
     list(query) {
       queries.push(query);
       return options.listResults ?? [];
+    },
+    setResolved(id, resolvedAtMs) {
+      resolutions.push({ id, resolvedAtMs });
+      return options.setResolvedResult ?? true;
     },
     health() {
       return {
@@ -191,6 +197,7 @@ function createHarness(options: HarnessOptions = {}) {
     stdoutText: () => stdout.join(""),
     stderrText: () => stderr.join(""),
     appended,
+    resolutions,
     queries,
     openedPaths,
     planRequests,
@@ -594,6 +601,22 @@ describe("runCli list", () => {
     });
   });
 
+  test("passes --include-resolved through to the store query", async () => {
+    const harness = createHarness({ repoContext: null });
+
+    const exitCode = await runCli(
+      ["list", "--include-resolved", "--json"],
+      harness.runtime,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(harness.queries[0]).toEqual({
+      order: "newest",
+      limit: 50,
+      includeResolved: true,
+    });
+  });
+
   test("human mode renders the list view with the resolved scope", async () => {
     const harness = createHarness({
       repoContext: null,
@@ -606,6 +629,35 @@ describe("runCli list", () => {
     expect(harness.stdoutText()).toContain("all repositories");
     expect(harness.stdoutText()).toContain("an example papercut body");
     expect(harness.stderrText()).toBe("");
+  });
+});
+
+describe("runCli lifecycle", () => {
+  test("resolves and reopens a papercut with a stable JSON payload", async () => {
+    const harness = createHarness();
+
+    const resolveExitCode = await runCli(
+      ["resolve", FIXED_UUID, "--json"],
+      harness.runtime,
+    );
+    const resolveEnvelope = parseEnvelope(harness.stdoutText());
+
+    expect(resolveExitCode).toBe(0);
+    expect(resolveEnvelope["command"]).toBe("resolve");
+    expect(resolveEnvelope["data"]).toEqual({ id: FIXED_UUID, resolved: true });
+    expect(harness.resolutions).toEqual([
+      { id: FIXED_UUID, resolvedAtMs: NOW_MS },
+    ]);
+  });
+
+  test("returns a sanitized not-found error for an unknown id", async () => {
+    const harness = createHarness({ setResolvedResult: false });
+
+    const exitCode = await runCli(["reopen", FIXED_UUID], harness.runtime);
+
+    expect(exitCode).toBe(3);
+    expect(harness.stderrText()).toBe("The requested item was not found.\n");
+    expect(harness.closeCalls).toBe(1);
   });
 });
 

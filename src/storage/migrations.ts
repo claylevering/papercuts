@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 
 import { PapercutsError } from "../domain/errors";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 interface Migration {
   readonly version: number;
@@ -52,12 +52,26 @@ CREATE INDEX papercuts_repo_created_idx
   ON papercuts(repo_key, created_at_ms DESC, id DESC)
   WHERE repo_key IS NOT NULL;`;
 
+const ADD_RESOLUTION_STATE_SQL = `ALTER TABLE papercuts
+  ADD COLUMN resolved_at_ms INTEGER
+  CHECK (resolved_at_ms IS NULL OR resolved_at_ms > 0);
+
+CREATE INDEX papercuts_active_created_idx
+  ON papercuts(created_at_ms DESC, id DESC)
+  WHERE resolved_at_ms IS NULL;`;
+
 const MIGRATIONS: readonly Migration[] = Object.freeze([
   Object.freeze({
     version: 1,
     name: "initial_schema",
     sql: INITIAL_SCHEMA_SQL,
     checksum: sha256Hex(INITIAL_SCHEMA_SQL),
+  }),
+  Object.freeze({
+    version: 2,
+    name: "add_resolution_state",
+    sql: ADD_RESOLUTION_STATE_SQL,
+    checksum: sha256Hex(ADD_RESOLUTION_STATE_SQL),
   }),
 ]);
 

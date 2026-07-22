@@ -64,6 +64,9 @@ function fakeStoreFactory(
       probe.listed = true;
       throw new Error("doctor must not read record bodies");
     },
+    setResolved() {
+      throw new Error("doctor must not change records");
+    },
     health() {
       return typeof health === "function" ? health() : health;
     },

@@ -42,6 +42,7 @@ export interface PapercutQuery {
   sinceMs?: number;
   order: "newest" | "oldest";
   limit?: number;
+  includeResolved?: true;
 }
 
 export interface StoreHealth {
@@ -62,6 +63,7 @@ export interface CaptureReceipt {
 export interface PapercutStore {
   append(record: Papercut): void;
   list(query: PapercutQuery): readonly Papercut[];
+  setResolved(id: string, resolvedAtMs: number | null): boolean;
   health(): StoreHealth;
   close(): void;
 }

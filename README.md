@@ -186,7 +186,7 @@ $ echo "Second papercut example." | papercuts add --stdin --json
 ### `list` — list recorded papercuts
 
 ```text
-papercuts list [--repo current|all] [--since DURATION] [--limit N]
+papercuts list [--repo current|all] [--since DURATION] [--limit N] [--include-resolved]
 ```
 
 Newest first, stable `(created_at_ms, id)` ordering. `--repo` defaults to
@@ -194,6 +194,9 @@ the current repository when run inside a Git worktree and to `all`
 otherwise; passing `--repo current` outside a Git repository is a
 validation error (exit 2). `--since` takes a duration like `30m`, `12h`, or
 `7d`. `--limit` is `1`–`1000`, default `50`.
+
+Resolved papercuts are excluded by default. Pass `--include-resolved` when
+auditing the complete history.
 
 ```bash
 $ papercuts list --repo all
@@ -227,13 +230,16 @@ $ papercuts list --repo all --since 1h --limit 2 --json
 ### `stats` — structural statistics
 
 ```text
-papercuts stats [--repo current|all] [--since DURATION]
+papercuts stats [--repo current|all] [--since DURATION] [--include-resolved]
 ```
 
 Reports facts, not opinions: total count, time range, counts by day,
 source, repository, and category, how many records contain any redaction,
 total replacement count, and exact repeated (post-redaction) bodies. It
 never infers themes, priority, or root cause.
+
+Resolved papercuts are excluded by default. Pass `--include-resolved` to
+include them in the statistics.
 
 ```bash
 $ papercuts stats --repo all
@@ -269,7 +275,7 @@ $ papercuts stats --repo all --json
 ### `export` — deterministic Markdown export
 
 ```text
-papercuts export [--repo current|all] [--since DURATION] [--output FILE] [--force]
+papercuts export [--repo current|all] [--since DURATION] [--output FILE] [--force] [--include-resolved]
 ```
 
 Without `--output`, Markdown goes to stdout and nothing is written to disk.
@@ -279,6 +285,9 @@ write goes through a same-directory temp file and an atomic rename.
 Exported Markdown omits absolute paths and repository fingerprints; only
 safe display fields (name, branch, relative cwd, model, category, tags)
 appear.
+
+Resolved papercuts are excluded by default. Pass `--include-resolved` to
+export the complete history.
 
 ````bash
 $ papercuts export --repo all
@@ -318,6 +327,27 @@ used, and `outputPath` is `null` on the stdout form):
 ```bash
 $ papercuts export --repo all --json
 {"version":1,"ok":true,"command":"export","data":{"scope":{"kind":"all"},"recordCount":3,"outputPath":null,"markdown":"# Papercuts\n\n..."},"warnings":[]}
+```
+
+### `resolve` and `reopen` — manage the active review set
+
+```text
+papercuts resolve ID
+papercuts reopen ID
+```
+
+Resolving an addressed papercut removes it from the default `list`, `stats`,
+and `export` views without deleting its captured evidence. Reopening restores
+it to those views. Both commands accept a papercut UUID and support `--json`.
+
+```bash
+$ papercuts resolve 62a54897-36de-4904-90a0-da28a17b3226
+Resolved papercut 62a54897-36de-4904-90a0-da28a17b3226.
+
+$ papercuts list --include-resolved
+
+$ papercuts reopen 62a54897-36de-4904-90a0-da28a17b3226
+Reopened papercut 62a54897-36de-4904-90a0-da28a17b3226.
 ```
 
 ### `setup` — install or remove harness guidance
@@ -613,8 +643,7 @@ These are intentionally out of scope for v1 — not oversights:
 - cloud sync, accounts, teams, or multi-machine reconciliation
 - daemon, background watcher, API server, or queue
 - semantic clustering, embeddings, LLM summaries, or automated diagnosis
-- issue creation, remediation, resolution state, editing, or deletion of
-  records — records are immutable and v1 has no `edit`/`delete`/`resolve`
+- issue creation, remediation, record editing, or deletion of records
 - committed per-repository papercut ledgers or per-repository databases
 - a TUI, editor, pager, or interactive capture prompt
 - an arbitrary adapter/plugin framework for harnesses beyond Codex, Claude

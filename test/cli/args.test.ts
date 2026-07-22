@@ -319,6 +319,13 @@ describe("parseArgs list", () => {
     expect(parse(["list", "--repo", "all"])).toMatchObject({ repo: "all" });
   });
 
+  test("includes resolved records only when explicitly requested", () => {
+    expect(parse(["list", "--include-resolved"])).toMatchObject({
+      includeResolved: true,
+    });
+    expectInvalid(["list", "--include-resolved", "--include-resolved"]);
+  });
+
   test("rejects an explicit auto scope", () => {
     expectInvalid(["list", "--repo", "auto"]);
   });
@@ -400,6 +407,12 @@ describe("parseArgs stats", () => {
     });
   });
 
+  test("includes resolved records only when explicitly requested", () => {
+    expect(parse(["stats", "--include-resolved"])).toMatchObject({
+      includeResolved: true,
+    });
+  });
+
   test("rejects a limit flag it does not support", () => {
     expectInvalid(["stats", "--limit", "5"]);
   });
@@ -429,6 +442,12 @@ describe("parseArgs export", () => {
     expect(parse(["export", "--force"])).toMatchObject({ force: true });
   });
 
+  test("includes resolved records only when explicitly requested", () => {
+    expect(parse(["export", "--include-resolved"])).toMatchObject({
+      includeResolved: true,
+    });
+  });
+
   test("rejects an empty output path", () => {
     expectInvalid(["export", "--output", ""]);
   });
@@ -453,6 +472,34 @@ describe("parseArgs export", () => {
   test("rejects a limit flag it does not support", () => {
     expectInvalid(["export", "--limit", "5"]);
   });
+});
+
+describe("parseArgs lifecycle", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+
+  test("parses resolve and reopen with a UUID", () => {
+    expect(parse(["resolve", id])).toEqual({
+      kind: "resolve",
+      id,
+      json: false,
+    });
+    expect(parse(["reopen", id, "--json"])).toEqual({
+      kind: "reopen",
+      id,
+      json: true,
+    });
+  });
+
+  for (const argv of [
+    ["resolve"],
+    ["resolve", "not-a-uuid"],
+    ["resolve", id, "extra"],
+    ["reopen", "00000000-0000-1000-8000-000000000001"],
+  ]) {
+    test(`rejects malformed lifecycle invocation ${argv.join(" ")}`, () => {
+      expectInvalid(argv);
+    });
+  }
 });
 
 describe("parseArgs setup", () => {

@@ -49,14 +49,21 @@ describe("SQLite migrations and safety", () => {
     openStore().close();
     const secondRows = readMigrationRows(databasePath);
 
-    expect(firstRows).toHaveLength(1);
-    expect(firstRows[0]).toEqual({
-      version: CURRENT_SCHEMA_VERSION,
-      name: "initial_schema",
-      checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
-      appliedAtMs: expect.any(Number),
-    });
-    expect(firstRows[0]?.appliedAtMs).toBeGreaterThan(0);
+    expect(firstRows).toEqual([
+      {
+        version: 1,
+        name: "initial_schema",
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        appliedAtMs: expect.any(Number),
+      },
+      {
+        version: CURRENT_SCHEMA_VERSION,
+        name: "add_resolution_state",
+        checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+        appliedAtMs: expect.any(Number),
+      },
+    ]);
+    expect(firstRows.every(({ appliedAtMs }) => appliedAtMs > 0)).toBe(true);
     expect(secondRows).toEqual(firstRows);
   });
 
@@ -92,7 +99,7 @@ describe("SQLite migrations and safety", () => {
       { exitCode: 0, stderr: "", stdout: "" },
       { exitCode: 0, stderr: "", stdout: "" },
     ]);
-    expect(readMigrationRows(databasePath)).toHaveLength(1);
+    expect(readMigrationRows(databasePath)).toHaveLength(2);
   });
 
   test("upgrades a programmatically created schema-v0 database", () => {
@@ -112,10 +119,35 @@ describe("SQLite migrations and safety", () => {
           .query<{ value: string }, []>("SELECT value FROM legacy_marker")
           .get(),
       ).toEqual({ value: "kept" });
-      expect(readMigrationRows(databasePath)).toHaveLength(1);
+      expect(readMigrationRows(databasePath)).toHaveLength(2);
     } finally {
       inspection.close();
     }
+  });
+
+  test("upgrades v1 records as active and retains their content", () => {
+    const seeded = openStore();
+    const record = makePapercut({
+      id: "00000000-0000-4000-8000-000000000908",
+    });
+    seeded.append(record);
+    seeded.close();
+    stores.pop();
+
+    const fixture = new Database(databasePath, { strict: true });
+    try {
+      fixture.run("DROP INDEX papercuts_active_created_idx");
+      fixture.run("ALTER TABLE papercuts DROP COLUMN resolved_at_ms");
+      fixture.query("DELETE FROM schema_migrations WHERE version = ?").run(2);
+    } finally {
+      fixture.close();
+    }
+
+    const upgraded = openStore();
+
+    expect(upgraded.health().schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(upgraded.list({ order: "newest" })).toEqual([record]);
+    expect(readMigrationRows(databasePath)).toHaveLength(2);
   });
 
   test("refuses a checksum mismatch without mutating schema state", () => {

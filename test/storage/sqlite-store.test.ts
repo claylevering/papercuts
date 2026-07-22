@@ -38,7 +38,7 @@ describe("openSqliteStore", () => {
     rmSync(directory, { force: true, recursive: true });
   });
 
-  test("creates the strict v1 schema and required indexes", () => {
+  test("creates the strict current schema and required indexes", () => {
     store = openSqliteStore(databasePath);
 
     const inspection = new Database(databasePath, { strict: true });
@@ -73,6 +73,10 @@ describe("openSqliteStore", () => {
         { name: "schema_migrations", strict: 1 },
       ]);
       expect(indexes).toEqual([
+        {
+          name: "papercuts_active_created_idx",
+          sql: "CREATE INDEX papercuts_active_created_idx\n  ON papercuts(created_at_ms DESC, id DESC)\n  WHERE resolved_at_ms IS NULL",
+        },
         {
           name: "papercuts_created_idx",
           sql: "CREATE INDEX papercuts_created_idx\n  ON papercuts(created_at_ms DESC, id DESC)",
@@ -157,6 +161,25 @@ describe("openSqliteStore", () => {
     store.append(record);
 
     expect(store.list({ order: "oldest" })).toEqual([record]);
+  });
+
+  test("hides resolved records by default and restores them on reopen", () => {
+    store = openSqliteStore(databasePath);
+    const record = makePapercut({
+      id: "00000000-0000-4000-8000-000000000103",
+    });
+    store.append(record);
+
+    expect(store.setResolved(record.id, 1_750_000_000_000)).toBe(true);
+    expect(store.list({ order: "newest" })).toEqual([]);
+    expect(
+      store.list({ order: "newest", includeResolved: true }),
+    ).toEqual([record]);
+    expect(store.setResolved(record.id, null)).toBe(true);
+    expect(store.list({ order: "newest" })).toEqual([record]);
+    expect(
+      store.setResolved("00000000-0000-4000-8000-000000000104", 1),
+    ).toBe(false);
   });
 
   test("filters by repository and an inclusive since timestamp", () => {
@@ -377,6 +400,7 @@ const EXPECTED_PAPERCUT_COLUMNS: TableColumn[] = [
   { cid: 14, name: "head", type: "TEXT", notnull: 0, dflt_value: null, pk: 0, hidden: 0 },
   { cid: 15, name: "redaction_count", type: "INTEGER", notnull: 1, dflt_value: null, pk: 0, hidden: 0 },
   { cid: 16, name: "redaction_version", type: "TEXT", notnull: 1, dflt_value: null, pk: 0, hidden: 0 },
+  { cid: 17, name: "resolved_at_ms", type: "INTEGER", notnull: 0, dflt_value: null, pk: 0, hidden: 0 },
 ];
 
 const EXPECTED_TABLE_SQL = [
@@ -399,7 +423,8 @@ const EXPECTED_TABLE_SQL = [
   branch TEXT,
   head TEXT,
   redaction_count INTEGER NOT NULL CHECK (redaction_count >= 0),
-  redaction_version TEXT NOT NULL,
+  redaction_version TEXT NOT NULL, resolved_at_ms INTEGER
+  CHECK (resolved_at_ms IS NULL OR resolved_at_ms > 0),
   CHECK (
     (repo_key IS NULL AND repo_key_kind IS NULL AND repo_name IS NULL
       AND repo_root IS NULL AND cwd_rel IS NULL AND branch IS NULL AND head IS NULL)
@@ -438,6 +463,7 @@ type RawPapercutRow = {
   head: string | number | null;
   redaction_count: string | number | null;
   redaction_version: string | number | null;
+  resolved_at_ms: string | number | null;
 };
 
 function expectTamperedRowRejected(
@@ -494,7 +520,8 @@ function createTamperedRowDatabase(
       branch,
       head,
       redaction_count,
-      redaction_version
+      redaction_version,
+      resolved_at_ms
     )`);
 
     const row: RawPapercutRow = {
@@ -515,6 +542,7 @@ function createTamperedRowDatabase(
       head: "a".repeat(40),
       redaction_count: 0,
       redaction_version: "1",
+      resolved_at_ms: null,
       ...override,
     };
     database
@@ -535,8 +563,9 @@ function createTamperedRowDatabase(
         branch,
         head,
         redaction_count,
-        redaction_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        redaction_version,
+        resolved_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         row.id,
         row.created_at_ms,
@@ -555,6 +584,7 @@ function createTamperedRowDatabase(
         row.head,
         row.redaction_count,
         row.redaction_version,
+        row.resolved_at_ms,
       );
   } finally {
     database.close();

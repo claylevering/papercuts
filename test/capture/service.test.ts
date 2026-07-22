@@ -503,6 +503,10 @@ class FakeStore implements PapercutStore {
     return this.records;
   }
 
+  setResolved(_id: string, _resolvedAtMs: number | null): boolean {
+    return false;
+  }
+
   health(): StoreHealth {
     return {
       schemaVersion: 1,

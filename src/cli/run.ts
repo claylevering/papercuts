@@ -66,6 +66,7 @@ type ListCommand = Extract<ParsedCommand, { kind: "list" }>;
 type StatsCommand = Extract<ParsedCommand, { kind: "stats" }>;
 type ExportCommand = Extract<ParsedCommand, { kind: "export" }>;
 type SetupCommand = Extract<ParsedCommand, { kind: "setup" }>;
+type LifecycleCommand = Extract<ParsedCommand, { kind: "resolve" | "reopen" }>;
 
 const MAX_STDIN_BYTES = 65_536;
 
@@ -77,6 +78,8 @@ const GENERAL_USAGE = [
   "  list                    List recorded papercuts",
   "  stats                   Show papercut statistics",
   "  export                  Export papercuts as Markdown",
+  "  resolve ID              Remove an addressed papercut from active views",
+  "  reopen ID               Restore a resolved papercut to active views",
   "  setup                   Preview or install harness guidance",
   "  doctor                  Run environment diagnostics",
   "",
@@ -88,10 +91,14 @@ const GENERAL_USAGE = [
 
 const COMMAND_USAGE: Readonly<Record<string, string>> = Object.freeze({
   add: "papercuts add TEXT | papercuts add --stdin [--source codex|claude-code|generic|manual] [--model MODEL] [--category CATEGORY] [--tag TAG ...]",
-  list: "papercuts list [--repo current|all] [--since DURATION] [--limit N]",
-  stats: "papercuts stats [--repo current|all] [--since DURATION]",
+  list:
+    "papercuts list [--repo current|all] [--since DURATION] [--limit N] [--include-resolved]",
+  stats:
+    "papercuts stats [--repo current|all] [--since DURATION] [--include-resolved]",
   export:
-    "papercuts export [--repo current|all] [--since DURATION] [--output FILE] [--force]",
+    "papercuts export [--repo current|all] [--since DURATION] [--output FILE] [--force] [--include-resolved]",
+  resolve: "papercuts resolve ID",
+  reopen: "papercuts reopen ID",
   setup:
     "papercuts setup codex|claude-code|generic [--scope user|repo] [--undo] [--apply]",
   doctor: "papercuts doctor",
@@ -126,6 +133,9 @@ export async function runCli(
         return await runStats(parsed, runtime);
       case "export":
         return await runExport(parsed, runtime);
+      case "resolve":
+      case "reopen":
+        return await runLifecycle(parsed, runtime);
       case "setup":
         return await runSetup(parsed, runtime);
       case "doctor":
@@ -248,7 +258,14 @@ async function runList(parsed: ListCommand, runtime: CliRuntime): Promise<number
   const resolved = await resolveReadScope(parsed.repo, runtime);
   const records = await withStore(runtime, (store) =>
     store.list(
-      buildQuery(resolved.repoKey, parsed.sinceMs, parsed.limit, "newest", runtime),
+      buildQuery(
+        resolved.repoKey,
+        parsed.sinceMs,
+        parsed.limit,
+        "newest",
+        runtime,
+        parsed.includeResolved,
+      ),
     ),
   );
 
@@ -267,7 +284,14 @@ async function runStats(parsed: StatsCommand, runtime: CliRuntime): Promise<numb
   const resolved = await resolveReadScope(parsed.repo, runtime);
   const records = await withStore(runtime, (store) =>
     store.list(
-      buildQuery(resolved.repoKey, parsed.sinceMs, undefined, "oldest", runtime),
+      buildQuery(
+        resolved.repoKey,
+        parsed.sinceMs,
+        undefined,
+        "oldest",
+        runtime,
+        parsed.includeResolved,
+      ),
     ),
   );
   const summary = summarize(records);
@@ -284,7 +308,14 @@ async function runExport(parsed: ExportCommand, runtime: CliRuntime): Promise<nu
   const resolved = await resolveReadScope(parsed.repo, runtime);
   const records = await withStore(runtime, (store) =>
     store.list(
-      buildQuery(resolved.repoKey, parsed.sinceMs, undefined, "oldest", runtime),
+      buildQuery(
+        resolved.repoKey,
+        parsed.sinceMs,
+        undefined,
+        "oldest",
+        runtime,
+        parsed.includeResolved,
+      ),
     ),
   );
   const markdown = renderMarkdown(records, resolved.scope);
@@ -316,6 +347,28 @@ async function runExport(parsed: ExportCommand, runtime: CliRuntime): Promise<nu
   } else {
     runtime.io.writeStdout(
       `Exported ${records.length} papercut(s) — ${describeScope(resolved.scope)}.\n`,
+    );
+  }
+  return 0;
+}
+
+async function runLifecycle(
+  parsed: LifecycleCommand,
+  runtime: CliRuntime,
+): Promise<number> {
+  const resolved = parsed.kind === "resolve";
+  const changed = await withStore(runtime, (store) =>
+    store.setResolved(parsed.id, resolved ? runtime.now() : null),
+  );
+
+  if (!changed) throw new PapercutsError("not_found");
+
+  const data = { id: parsed.id, resolved };
+  if (parsed.json) {
+    writeJsonSuccess(runtime.io, parsed.kind, data);
+  } else {
+    runtime.io.writeStdout(
+      `${resolved ? "Resolved" : "Reopened"} papercut ${parsed.id}.\n`,
     );
   }
   return 0;
@@ -466,6 +519,7 @@ function buildQuery(
   limit: number | undefined,
   order: PapercutQuery["order"],
   runtime: CliRuntime,
+  includeResolved: true | undefined,
 ): PapercutQuery {
   const query: PapercutQuery = { order };
 
@@ -477,6 +531,9 @@ function buildQuery(
   }
   if (limit !== undefined) {
     query.limit = limit;
+  }
+  if (includeResolved === true) {
+    query.includeResolved = true;
   }
   return query;
 }
@@ -544,6 +601,7 @@ function openLazyDataStore(runtime: CliRuntime): PapercutStore {
   return {
     append: (record) => open().append(record),
     list: (query) => open().list(query),
+    setResolved: (id, resolvedAtMs) => open().setResolved(id, resolvedAtMs),
     health: () => open().health(),
     close: () => {
       opened?.close();

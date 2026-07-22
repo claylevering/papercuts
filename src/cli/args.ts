@@ -25,12 +25,14 @@ export type ParsedCommand =
       repo: "auto" | "current" | "all";
       sinceMs?: number;
       limit: number;
+      includeResolved?: true;
       json: boolean;
     }
   | {
       kind: "stats";
       repo: "auto" | "current" | "all";
       sinceMs?: number;
+      includeResolved?: true;
       json: boolean;
     }
   | {
@@ -39,6 +41,7 @@ export type ParsedCommand =
       sinceMs?: number;
       output?: string;
       force: boolean;
+      includeResolved?: true;
       json: boolean;
     }
   | {
@@ -49,6 +52,7 @@ export type ParsedCommand =
       apply: boolean;
       json: boolean;
     }
+  | { kind: "resolve" | "reopen"; id: string; json: boolean }
   | { kind: "doctor"; json: boolean };
 
 type HelpCommand = Extract<ParsedCommand, { kind: "help" }>;
@@ -58,6 +62,7 @@ type StatsCommand = Extract<ParsedCommand, { kind: "stats" }>;
 type ExportCommand = Extract<ParsedCommand, { kind: "export" }>;
 type SetupCommand = Extract<ParsedCommand, { kind: "setup" }>;
 type DoctorCommand = Extract<ParsedCommand, { kind: "doctor" }>;
+type LifecycleCommand = Extract<ParsedCommand, { kind: "resolve" | "reopen" }>;
 
 type RepoScope = "auto" | "current" | "all";
 
@@ -81,6 +86,8 @@ const COMMAND_WORDS = new Set([
   "list",
   "stats",
   "export",
+  "resolve",
+  "reopen",
   "setup",
   "doctor",
 ]);
@@ -144,6 +151,9 @@ export function parseArgs(argv: readonly string[]): ParsedCommand {
       return parseStats(rest, globals.json);
     case "export":
       return parseExport(rest, globals.json);
+    case "resolve":
+    case "reopen":
+      return parseLifecycle(first, rest, globals.json);
     case "setup":
       return parseSetup(rest, globals.json);
     default:
@@ -315,6 +325,7 @@ function parseList(rest: readonly string[], json: boolean): ListCommand {
   let sinceMs: number | undefined;
   let limit = DEFAULT_LIMIT;
   let limitSeen = false;
+  let includeResolved = false;
   let index = 0;
 
   while (index < rest.length) {
@@ -352,6 +363,14 @@ function parseList(rest: readonly string[], json: boolean): ListCommand {
       continue;
     }
 
+    if (name === "--include-resolved") {
+      if (includeResolved) throw usageError();
+      rejectInlineValue(inline);
+      includeResolved = true;
+      index += 1;
+      continue;
+    }
+
     throw usageError();
   }
 
@@ -359,6 +378,7 @@ function parseList(rest: readonly string[], json: boolean): ListCommand {
   if (sinceMs !== undefined) {
     command.sinceMs = sinceMs;
   }
+  if (includeResolved) command.includeResolved = true;
   return command;
 }
 
@@ -366,6 +386,7 @@ function parseStats(rest: readonly string[], json: boolean): StatsCommand {
   let repo: RepoScope = "auto";
   let repoSeen = false;
   let sinceMs: number | undefined;
+  let includeResolved = false;
   let index = 0;
 
   while (index < rest.length) {
@@ -392,6 +413,14 @@ function parseStats(rest: readonly string[], json: boolean): StatsCommand {
       continue;
     }
 
+    if (name === "--include-resolved") {
+      if (includeResolved) throw usageError();
+      rejectInlineValue(inline);
+      includeResolved = true;
+      index += 1;
+      continue;
+    }
+
     throw usageError();
   }
 
@@ -399,6 +428,7 @@ function parseStats(rest: readonly string[], json: boolean): StatsCommand {
   if (sinceMs !== undefined) {
     command.sinceMs = sinceMs;
   }
+  if (includeResolved) command.includeResolved = true;
   return command;
 }
 
@@ -408,6 +438,7 @@ function parseExport(rest: readonly string[], json: boolean): ExportCommand {
   let sinceMs: number | undefined;
   let output: string | undefined;
   let force = false;
+  let includeResolved = false;
   let index = 0;
 
   while (index < rest.length) {
@@ -455,6 +486,14 @@ function parseExport(rest: readonly string[], json: boolean): ExportCommand {
       continue;
     }
 
+    if (name === "--include-resolved") {
+      if (includeResolved) throw usageError();
+      rejectInlineValue(inline);
+      includeResolved = true;
+      index += 1;
+      continue;
+    }
+
     throw usageError();
   }
 
@@ -465,7 +504,20 @@ function parseExport(rest: readonly string[], json: boolean): ExportCommand {
   if (output !== undefined) {
     command.output = output;
   }
+  if (includeResolved) command.includeResolved = true;
   return command;
+}
+
+function parseLifecycle(
+  kind: LifecycleCommand["kind"],
+  rest: readonly string[],
+  json: boolean,
+): LifecycleCommand {
+  const id = rest[0];
+  if (rest.length !== 1 || id === undefined || !UUID_V4_PATTERN.test(id)) {
+    throw usageError();
+  }
+  return { kind, id, json };
 }
 
 function parseSetup(rest: readonly string[], json: boolean): SetupCommand {
@@ -532,6 +584,9 @@ function parseDoctor(rest: readonly string[], json: boolean): DoctorCommand {
   }
   return { kind: "doctor", json };
 }
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Split a token into an option name and an optional inline value. Only long
